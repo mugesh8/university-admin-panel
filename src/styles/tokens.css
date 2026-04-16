@@ -1,0 +1,59 @@
+/* Aligned with application portal (Metropolitician/application portal) — navy + gold */
+:root {
+  --color-bg: #eef2f7;
+  --color-surface: #ffffff;
+  --color-border: rgb(10 22 40 / 0.1);
+  --color-text: rgb(10 22 40 / 0.78);
+  --color-text-muted: rgb(10 22 40 / 0.55);
+  --color-heading: #0a1628;
+
+  --color-primary: #0a1628;
+  --color-primary-mid: #122640;
+  --color-primary-hover: #071427;
+  --color-primary-fg: #ffffff;
+
+  --color-accent: #d4a843;
+  --color-accent-hover: #c5972c;
+  --color-accent-soft: #fff8e8;
+  --color-accent-text: #7a5a14;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --shadow-sm: 0 1px 2px rgb(10 22 40 / 0.06);
+  --shadow-md: 0 4px 12px rgb(10 22 40 / 0.1);
+}
+
+@theme inline {
+  --color-mucm-bg: var(--color-bg);
+  --color-mucm-surface: var(--color-surface);
+  --color-mucm-border: var(--color-border);
+  --color-mucm-text: var(--color-text);
+  --color-mucm-muted: var(--color-text-muted);
+  --color-mucm-heading: var(--color-heading);
+  --color-mucm-primary: var(--color-primary);
+  --color-mucm-primary-hover: var(--color-primary-hover);
+  --color-mucm-accent: var(--color-accent);
+  --font-sans: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
+  --animate-soft-pulse: soft-pulse 2.8s ease-in-out infinite;
+  --animate-shimmer: shimmer 2.8s linear infinite;
+}
+
+@keyframes soft-pulse {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(212, 168, 67, 0.15);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(212, 168, 67, 0.04);
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(120%);
+  }
+}

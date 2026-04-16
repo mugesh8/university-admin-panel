@@ -1,0 +1,21 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+
+@layer base {
+  html {
+    @apply antialiased;
+    height: 100%;
+  }
+  body {
+    margin: 0;
+    height: 100%;
+    overflow: hidden;
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: 'Source Sans 3', var(--font-sans, system-ui, sans-serif);
+  }
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+}
