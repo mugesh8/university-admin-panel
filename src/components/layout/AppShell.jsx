@@ -21,7 +21,7 @@ export function AppShell() {
       />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <TopNav onSignOut={signOut} onMenuClick={() => setMobileOpen(true)} />
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[radial-gradient(circle_at_top_right,#fff4d6_0%,#f7f6f3_35%,#eef2f7_100%)] p-4 sm:p-6">
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-y-contain bg-[radial-gradient(circle_at_top_right,#fff4d6_0%,#f7f6f3_35%,#eef2f7_100%)] p-3 sm:p-4 lg:p-4 xl:p-6">
           <Outlet />
         </div>
       </div>

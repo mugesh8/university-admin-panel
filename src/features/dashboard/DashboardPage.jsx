@@ -44,17 +44,20 @@ export function DashboardPage() {
   const revPct = Math.round((revTotal / revenueMock.target) * 100)
 
   return (
-    <div className="mx-auto w-full max-w-[80rem] space-y-6">
-      <section aria-label="Key metrics" className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    <div className="mx-auto w-full max-w-[80rem] space-y-4 xl:space-y-6">
+      <section
+        aria-label="Key metrics"
+        className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 lg:gap-3 xl:grid-cols-5 xl:gap-4"
+      >
         {kpiCards.map((k) => (
           <KpiCard key={k.id} {...k} />
         ))}
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2 lg:items-stretch">
+      <section className="grid gap-3 lg:grid-cols-2 lg:items-stretch xl:gap-4">
         <Card className="flex min-h-0 flex-col">
           <CardHeader title="Admissions funnel" />
-          <div className="min-h-[288px] w-full flex-1">
+          <div className="min-h-[220px] w-full flex-1 sm:min-h-[248px] xl:min-h-[288px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={funnelData} layout="vertical" margin={{ left: 8, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-[var(--color-border)]" />
@@ -73,7 +76,7 @@ export function DashboardPage() {
 
         <Card className="flex min-h-0 flex-col">
           <CardHeader title="Pipeline distribution" />
-          <div className="min-h-[288px] w-full flex-1">
+          <div className="min-h-[220px] w-full flex-1 sm:min-h-[248px] xl:min-h-[288px]">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={pipelineStages} margin={{ left: 8, right: 8 }}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-[var(--color-border)]" />
@@ -87,10 +90,10 @@ export function DashboardPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
+      <section className="grid gap-3 lg:grid-cols-3 lg:items-stretch xl:gap-4">
         <Card className="flex min-h-0 flex-col lg:col-span-2">
           <CardHeader title="Applications trend" />
-          <div className="min-h-[260px] w-full flex-1 sm:min-h-[280px]">
+          <div className="min-h-[220px] w-full flex-1 sm:min-h-[240px] xl:min-h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={weeklyTrend}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-[var(--color-border)]" />
@@ -105,10 +108,10 @@ export function DashboardPage() {
 
         <Card className="flex min-h-0 flex-col">
           <CardHeader title="Gender breakdown" />
-          <div className="min-h-[260px] w-full flex-1 sm:min-h-[280px]">
+          <div className="min-h-[220px] w-full flex-1 sm:min-h-[240px] xl:min-h-[280px]">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
-                <Pie data={genderSlices} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={80} label>
+                <Pie data={genderSlices} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={72} label>
                   {genderSlices.map((e, i) => (
                     <Cell key={i} fill={e.fill} />
                   ))}
@@ -121,7 +124,7 @@ export function DashboardPage() {
         </Card>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-3 lg:items-stretch">
+      <section className="grid gap-3 lg:grid-cols-3 lg:items-stretch xl:gap-4">
         <Card className="flex min-h-0 flex-col">
           <CardHeader title="Program breakdown" />
           <ul className="flex-1 space-y-3 text-sm">

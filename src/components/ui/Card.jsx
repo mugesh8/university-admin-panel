@@ -1,7 +1,7 @@
 export function Card({ children, className = '', padding = true }) {
   return (
     <div
-      className={`rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] ${padding ? 'p-5' : ''} ${className}`}
+      className={`rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)] ${padding ? 'p-4 xl:p-5' : ''} ${className}`}
     >
       {children}
     </div>
@@ -10,9 +10,11 @@ export function Card({ children, className = '', padding = true }) {
 
 export function CardHeader({ title, description, actions }) {
   return (
-    <div className="mb-4 flex shrink-0 flex-wrap items-start justify-between gap-3 sm:items-center">
+    <div className="mb-3 flex shrink-0 flex-wrap items-start justify-between gap-2 sm:items-center xl:mb-4 xl:gap-3">
       <div className="min-w-0 flex-1">
-        {title ? <h3 className="text-base font-semibold text-[var(--color-heading)]">{title}</h3> : null}
+        {title ? (
+          <h3 className="text-sm font-semibold text-[var(--color-heading)] xl:text-base">{title}</h3>
+        ) : null}
         {description ? (
           <p className="mt-0.5 text-sm text-[var(--color-text-muted)]">{description}</p>
         ) : null}

@@ -59,7 +59,7 @@ export function TopNav({ onMenuClick, onSignOut }) {
   }, [menuOpen, notifOpen])
 
   return (
-    <header className="z-30 flex h-14 shrink-0 items-center justify-between gap-3 border-b border-[#0A1628]/10 bg-white/80 px-3 backdrop-blur-md sm:px-5">
+    <header className="z-30 flex h-12 shrink-0 items-center justify-between gap-2 border-b border-[#0A1628]/10 bg-white/80 px-3 backdrop-blur-md sm:gap-3 sm:px-4 xl:h-14 xl:px-5">
       <div className="flex min-w-0 flex-1 items-center gap-1 sm:gap-2">
         <button
           type="button"
@@ -69,7 +69,7 @@ export function TopNav({ onMenuClick, onSignOut }) {
         >
           <Menu className="h-5 w-5" />
         </button>
-        <h1 className="min-w-0 truncate text-base font-semibold text-lg tracking-tight text-[#0A1628]">
+        <h1 className="min-w-0 truncate text-base font-semibold tracking-tight text-[#0A1628] xl:text-lg">
           {pageTitle}
         </h1>
       </div>
@@ -85,9 +85,9 @@ export function TopNav({ onMenuClick, onSignOut }) {
               setNotifOpen((o) => !o)
               setMenuOpen(false)
             }}
-            className="relative flex h-10 w-10 items-center justify-center rounded-full border border-[#0A1628]/15 bg-[#0A1628]/5 text-[#0A1628] transition hover:border-[#D4A843]/50 hover:bg-[#D4A843]/10 hover:text-[#0A1628] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A843]/60"
+            className="relative flex h-9 w-9 items-center justify-center rounded-full border border-[#0A1628]/15 bg-[#0A1628]/5 text-[#0A1628] transition hover:border-[#D4A843]/50 hover:bg-[#D4A843]/10 hover:text-[#0A1628] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A843]/60 xl:h-10 xl:w-10"
           >
-            <Bell className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+            <Bell className="h-[18px] w-[18px] xl:h-5 xl:w-5" strokeWidth={1.75} aria-hidden />
             <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#c2410c] ring-2 ring-white" aria-hidden />
           </button>
 
@@ -140,9 +140,9 @@ export function TopNav({ onMenuClick, onSignOut }) {
             setMenuOpen((o) => !o)
             setNotifOpen(false)
           }}
-          className="flex h-10 w-10 items-center justify-center rounded-full border border-[#0A1628]/15 bg-[#0A1628]/5 text-[#0A1628] transition hover:border-[#D4A843]/50 hover:bg-[#D4A843]/10 hover:text-[#0A1628] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A843]/60"
+          className="flex h-9 w-9 items-center justify-center rounded-full border border-[#0A1628]/15 bg-[#0A1628]/5 text-[#0A1628] transition hover:border-[#D4A843]/50 hover:bg-[#D4A843]/10 hover:text-[#0A1628] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#D4A843]/60 xl:h-10 xl:w-10"
         >
-          <User className="h-5 w-5" strokeWidth={1.75} aria-hidden />
+          <User className="h-[18px] w-[18px] xl:h-5 xl:w-5" strokeWidth={1.75} aria-hidden />
         </button>
 
         {menuOpen ? (
