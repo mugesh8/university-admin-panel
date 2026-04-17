@@ -6,7 +6,10 @@ import { LoginPage } from './features/auth/LoginPage.jsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.jsx'
 import { ApplicationDetailPage } from './features/applications/ApplicationDetailPage.jsx'
 import { ApplicationsLayout } from './features/applications/ApplicationsLayout.jsx'
+import { AdminCreateApplicationPage } from './features/applications/AdminCreateApplicationPage.jsx'
 import { ApplicationsListPage } from './features/applications/ApplicationsListPage.jsx'
+import { DraftApplicationsPage } from './features/applications/DraftApplicationsPage.jsx'
+import { DraftDetailPage } from './features/applications/DraftDetailPage.jsx'
 import { DocumentsPage } from './features/applications/DocumentsPage.jsx'
 import { EnrolledStudentsPage } from './features/applications/EnrolledStudentsPage.jsx'
 import { InterviewsPage } from './features/applications/InterviewsPage.jsx'
@@ -60,6 +63,9 @@ function AppRoutes() {
         </Route>
         <Route path="applications" element={<ApplicationsLayout />}>
           <Route index element={<ApplicationsListPage />} />
+          <Route path="new" element={<AdminCreateApplicationPage />} />
+          <Route path="drafts" element={<DraftApplicationsPage />} />
+          <Route path="drafts/:draftId" element={<DraftDetailPage />} />
           <Route path="interviews" element={<InterviewsPage />} />
           <Route path="payments" element={<PaymentsPage />} />
           <Route path="enrolled-students" element={<EnrolledStudentsPage />} />

@@ -1,18 +1,22 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { User, FileStack, CreditCard, Mail, History, Database, Zap } from 'lucide-react'
+import { User, Mail, History, Database, Zap } from 'lucide-react'
 import { usePageTitleContext } from '../../context/PageTitleContext.jsx'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
 import { Button } from '../../components/ui/Button.jsx'
 import { Card } from '../../components/ui/Card.jsx'
 import { Tabs, TabList, TabPanel, TabTrigger } from '../../components/ui/Tabs.jsx'
+import { buildPortalFormValuesFromApplication } from '../../lib/application-form/buildPortalFormValuesFromApplication.js'
+import { portalFormSteps, portalStepTabValue } from '../../lib/application-form/portalFormSteps.js'
 import { getApplicationById } from '../../lib/mock-data/applications.js'
+import { ApplicationFormStepPanel } from './ApplicationFormStepPanel.jsx'
 
 export function ApplicationDetailPage() {
   const { id } = useParams()
   const app = getApplicationById(id ?? '')
   const { setPageTitleOverride } = usePageTitleContext()
+  const portalFormValues = useMemo(() => (app ? buildPortalFormValuesFromApplication(app) : {}), [app])
 
   useEffect(() => {
     if (!app) {
@@ -77,97 +81,24 @@ export function ApplicationDetailPage() {
         </div>
       </Card>
 
-      <Tabs defaultValue="personal">
+      <Tabs defaultValue={portalStepTabValue(portalFormSteps[0].id)}>
         <TabList>
-          <TabTrigger value="personal">Personal details</TabTrigger>
-          <TabTrigger value="academic">Academic & motivation</TabTrigger>
-          <TabTrigger value="documents">Documents</TabTrigger>
-          <TabTrigger value="financial">Financial</TabTrigger>
+          {portalFormSteps.map((step) => (
+            <TabTrigger key={step.id} value={portalStepTabValue(step.id)}>
+              {step.title}
+            </TabTrigger>
+          ))}
           <TabTrigger value="comms">Communication log</TabTrigger>
           <TabTrigger value="timeline">Activity timeline</TabTrigger>
           <TabTrigger value="crm">CRM data</TabTrigger>
           <TabTrigger value="actions">Actions</TabTrigger>
         </TabList>
 
-        <TabPanel value="personal">
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <DetailItem label="Title" value={app.personal.title} />
-            <DetailItem label="Date of birth" value={app.personal.dob} />
-            <DetailItem label="Passport" value={app.personal.passport} />
-            <DetailItem label="Address" value={app.personal.address} />
-            <DetailItem label="Email" value={app.email} />
-            <DetailItem label="Phone" value={app.phone} />
-            <DetailItem label="Citizenship" value={app.citizenship} />
-            <DetailItem label="Country" value={app.country} />
-          </dl>
-        </TabPanel>
-
-        <TabPanel value="academic">
-          <dl className="grid gap-3 sm:grid-cols-2">
-            <DetailItem label="Qualification" value={app.academic.qualification} />
-            <DetailItem label="Institution" value={app.academic.institution} />
-            <div className="sm:col-span-2">
-              <dt className="text-xs font-medium uppercase text-[var(--color-text-muted)]">Personal statement</dt>
-              <dd className="mt-1 text-sm text-[var(--color-text)]">{app.academic.personalStatement}</dd>
-            </div>
-          </dl>
-        </TabPanel>
-
-        <TabPanel value="documents">
-          {app.documents.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No documents in demo record.</p>
-          ) : (
-            <ul className="space-y-3">
-              {app.documents.map((d) => (
-                <li
-                  key={d.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3"
-                >
-                  <div className="flex items-center gap-2">
-                    <FileStack className="h-5 w-5 text-[var(--color-text-muted)]" />
-                    <span className="font-medium text-[var(--color-heading)]">{d.name}</span>
-                    <Badge tone={d.status === 'verified' ? 'success' : 'warning'}>{d.status}</Badge>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Button type="button" variant="secondary" className="!py-1.5 text-xs">
-                      Verify
-                    </Button>
-                    <Button type="button" variant="secondary" className="!py-1.5 text-xs">
-                      Reject
-                    </Button>
-                    <Button type="button" variant="secondary" className="!py-1.5 text-xs">
-                      Request re-upload
-                    </Button>
-                  </div>
-                  {d.officer ? (
-                    <p className="w-full text-xs text-[var(--color-text-muted)]">
-                      {d.officer} · {d.at}
-                    </p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
-        </TabPanel>
-
-        <TabPanel value="financial">
-          <dl className="mb-4 grid gap-3 sm:grid-cols-2">
-            <DetailItem label="Payment option" value={app.financial.payer} />
-            <DetailItem label="Sponsor" value={app.financial.sponsorName ?? '—'} />
-          </dl>
-          <h4 className="mb-2 text-sm font-semibold text-[var(--color-heading)]">Payment history</h4>
-          {app.financial.payments.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No payments recorded.</p>
-          ) : (
-            <ul className="text-sm">
-              {app.financial.payments.map((p, i) => (
-                <li key={i} className="border-b border-[var(--color-border)] py-2 last:border-0">
-                  {p.type} — {p.amount} — {p.status} ({p.ref})
-                </li>
-              ))}
-            </ul>
-          )}
-        </TabPanel>
+        {portalFormSteps.map((step) => (
+          <TabPanel key={step.id} value={portalStepTabValue(step.id)}>
+            <ApplicationFormStepPanel step={step} formValues={portalFormValues} />
+          </TabPanel>
+        ))}
 
         <TabPanel value="comms">
           {app.communications.length === 0 ? (

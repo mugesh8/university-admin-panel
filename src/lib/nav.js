@@ -32,6 +32,8 @@ export const routeTitles = {
   '/settings/pipeline-stages': 'Pipeline stages',
   '/settings/dropdown-options': 'Dropdown options',
   '/applications': 'Applications',
+  '/applications/new': 'New application',
+  '/applications/drafts': 'Drafts',
   '/applications/interviews': 'Interviews',
   '/applications/payments': 'Payments',
   '/applications/enrolled-students': 'Enrolled students',
@@ -47,6 +49,8 @@ export const routeTitles = {
 }
 
 const RESERVED_APPLICATION_SEGMENTS = new Set([
+  'new',
+  'drafts',
   'interviews',
   'payments',
   'enrolled-students',
@@ -61,6 +65,9 @@ export function getPageTitleFromPath(pathname) {
   if (routeTitles[p]) return routeTitles[p]
 
   const parts = p.split('/').filter(Boolean)
+  if (parts[0] === 'applications' && parts[1] === 'drafts' && parts.length === 3) {
+    return 'Draft application'
+  }
   if (parts[0] === 'applications' && parts.length === 2 && !RESERVED_APPLICATION_SEGMENTS.has(parts[1])) {
     return 'Application'
   }

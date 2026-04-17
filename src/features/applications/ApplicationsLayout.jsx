@@ -1,6 +1,20 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 
-const TAB_PATHS = ['/applications', '/applications/interviews', '/applications/payments', '/applications/enrolled-students', '/applications/documents']
+const TAB_PATHS = [
+  '/applications',
+  '/applications/drafts',
+  '/applications/interviews',
+  '/applications/payments',
+  '/applications/enrolled-students',
+  '/applications/documents',
+]
+
+function shouldShowApplicationTabs(path) {
+  if (path === '/applications/new') return false
+  if (TAB_PATHS.includes(path)) return true
+  if (path.startsWith('/applications/drafts/')) return true
+  return false
+}
 
 function tabClass(active) {
   return [
@@ -14,7 +28,7 @@ function tabClass(active) {
 export function ApplicationsLayout() {
   const { pathname } = useLocation()
   const path = pathname.replace(/\/$/, '') || '/'
-  const showTabs = TAB_PATHS.includes(path)
+  const showTabs = shouldShowApplicationTabs(path)
 
   return (
     <div className="mx-auto w-full max-w-[80rem]">
@@ -25,6 +39,9 @@ export function ApplicationsLayout() {
         >
           <NavLink to="/applications" end className={({ isActive }) => tabClass(isActive)}>
             All applications
+          </NavLink>
+          <NavLink to="/applications/drafts" className={({ isActive }) => tabClass(isActive)}>
+            Drafts
           </NavLink>
           <NavLink to="/applications/interviews" className={({ isActive }) => tabClass(isActive)}>
             Interviews
