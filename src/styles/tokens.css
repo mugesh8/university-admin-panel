@@ -37,6 +37,20 @@
   --font-sans: 'Source Sans 3', 'Segoe UI', system-ui, sans-serif;
   --animate-soft-pulse: soft-pulse 2.8s ease-in-out infinite;
   --animate-shimmer: shimmer 2.8s linear infinite;
+
+  /* Student portal form semantics (shadcn-compatible) — used by StepForm / FormField / FileDropzone */
+  --color-border: rgb(10 22 40 / 0.12);
+  --color-input: rgb(10 22 40 / 0.12);
+  --color-background: #ffffff;
+  --color-foreground: #0a1628;
+  --color-card: #ffffff;
+  --color-muted: #f4f4f1;
+  --color-muted-foreground: rgb(10 22 40 / 0.55);
+  --color-destructive: #dc2626;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0a1628;
+  --color-secondary: #f4f4f1;
+  --color-ring: #d4a843;
 }
 
 @keyframes soft-pulse {

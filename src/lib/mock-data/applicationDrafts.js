@@ -1,3 +1,5 @@
+import { demoUploadedDocumentUrl } from './applications.js'
+
 /**
  * In-progress applications (not yet submitted), aligned with the student portal’s
  * draft/submission shape: partial `formValues` from the application form.
@@ -105,6 +107,14 @@ export const applicationDrafts = [
       semester: 'September',
       year: '2026',
       englishProficiency: 'Native Speaker',
+      passport: 'sofia-martins-passport.pdf',
+      bankStatement: 'bank-statements-q1-2026.pdf',
+      preMedTranscript: 'undergrad-transcript.pdf',
+      _fileViewUrls: {
+        passport: demoUploadedDocumentUrl,
+        bankStatement: demoUploadedDocumentUrl,
+        preMedTranscript: demoUploadedDocumentUrl,
+      },
     },
   },
 ]

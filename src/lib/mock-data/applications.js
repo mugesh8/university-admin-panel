@@ -1,3 +1,7 @@
+/** Demo URL for “view uploaded document” in the admin Documents queue (opens in a new tab). */
+export const demoUploadedDocumentUrl =
+  'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'
+
 export const applications = [
   {
     id: 'MUCM-2026-01402',
@@ -37,6 +41,8 @@ export const applications = [
         virusScan: 'clean',
         stale: false,
         uploadedAt: '2026-03-28',
+        fileUrl: demoUploadedDocumentUrl,
+        formField: 'passport',
       },
       {
         id: 'd2',
@@ -47,6 +53,8 @@ export const applications = [
         virusScan: 'clean',
         stale: true,
         uploadedAt: '2026-01-10',
+        fileUrl: demoUploadedDocumentUrl,
+        formField: 'bankStatement',
       },
       {
         id: 'd3',
@@ -57,6 +65,8 @@ export const applications = [
         virusScan: 'clean',
         stale: false,
         uploadedAt: '2026-03-27',
+        fileUrl: demoUploadedDocumentUrl,
+        formField: 'preMedTranscript',
       },
     ],
     financial: {
@@ -205,6 +215,8 @@ export const applications = [
         virusScan: 'clean',
         stale: false,
         uploadedAt: '2026-02-16',
+        fileUrl: demoUploadedDocumentUrl,
+        formField: 'passport',
       },
     ],
     financial: {
@@ -376,6 +388,8 @@ export const applications = [
         virusScan: 'pending',
         stale: false,
         uploadedAt: '2026-04-14',
+        fileUrl: demoUploadedDocumentUrl,
+        formField: 'bankStatement',
       },
     ],
     financial: {

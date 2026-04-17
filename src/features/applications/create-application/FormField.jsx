@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { FileStack } from 'lucide-react'
+import { CheckCircle2, FileStack } from 'lucide-react'
 import { countries } from '../../../lib/application-form/countries.js'
 import { formatAcceptLabels } from '../../../lib/application-form/fileFieldMeta.js'
-import { getSelectValues, normalizeSelectOptions } from '../../../lib/application-form/formVisibility.js'
+import { normalizeSelectOptions } from '../../../lib/application-form/formVisibility.js'
+import DateInput from './DateInput.jsx'
+import FileDropzone from './FileDropzone.jsx'
 
 function CountryCombobox({
   field,
@@ -101,9 +103,9 @@ function CountryCombobox({
       <span className={labelClasses}>
         {label} {required ? <span className="text-red-500">*</span> : null}
       </span>
-      <div className="mt-1.5" ref={wrapperRef}>
+      <div className="mt-2" ref={wrapperRef}>
         <input
-          className={`${inputClasses} ${error ? 'border-red-400 focus:border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.16)]' : ''}`}
+          className={`${inputClasses} ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
           type="text"
           value={query}
           required={required}
@@ -122,7 +124,7 @@ function CountryCombobox({
           <ul
             id={`${name}-country-listbox`}
             role="listbox"
-            className="z-30 mt-2 max-h-52 w-full overflow-y-auto rounded-xl border border-[#0A1628]/12 bg-white p-1.5 shadow-xl shadow-[#0A1628]/12 ring-1 ring-[#0A1628]/5"
+            className="z-30 mt-2 max-h-52 w-full overflow-y-auto rounded-md border border-border bg-popover p-1.5 text-popover-foreground shadow-lg ring-1 ring-border"
           >
             {filteredCountries.length === 0 ? (
               <li className="px-3 py-2 text-sm text-[#0A1628]/55">No countries found</li>
@@ -150,16 +152,16 @@ function CountryCombobox({
         ) : null}
       </div>
       {helper ? (
-        <small className="mt-1 block text-xs text-[#0A1628]/50">{helper}</small>
+        <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
       ) : null}
       {error ? (
-        <small className="mt-1 block text-xs font-medium text-red-600">{error}</small>
+        <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
       ) : null}
     </label>
   )
 }
 
-function RepeatableBlock({ field, value, onChange, errors }) {
+function RepeatableBlock({ field, value, onChange, errors, onUploadActivityChange }) {
   const defaultItem = field.defaultItem ?? {}
   const items =
     Array.isArray(value) && value.length > 0
@@ -201,7 +203,7 @@ function RepeatableBlock({ field, value, onChange, errors }) {
               {field.sectionTitle}
             </h3>
             {field.sectionSubtitle ? (
-              <p className="text-sm text-[#0A1628]/50">{field.sectionSubtitle}</p>
+              <p className="text-sm text-muted-foreground">{field.sectionSubtitle}</p>
             ) : null}
           </div>
         </div>
@@ -216,7 +218,7 @@ function RepeatableBlock({ field, value, onChange, errors }) {
         {items.map((row, rowIndex) => (
           <div
             key={`${field.name}-${rowIndex}`}
-            className="relative rounded-xl border border-[#0A1628]/10 bg-white p-4 shadow-sm sm:p-5"
+            className="relative rounded-md border border-border bg-card p-4 shadow-sm sm:p-5"
           >
             <div className="mb-4 flex items-center justify-between">
               <span className="rounded-full bg-[#D4A843]/10 px-3 py-1 text-xs font-bold text-[#D4A843]">
@@ -243,6 +245,7 @@ function RepeatableBlock({ field, value, onChange, errors }) {
                     value={row[sub.name]}
                     error={errors[`${field.name}__${rowIndex}__${sub.name}`]}
                     onChange={(subName, subVal) => updateRow(rowIndex, subName, subVal)}
+                    onUploadActivityChange={onUploadActivityChange}
                   />
                 </div>
               ))}
@@ -262,7 +265,7 @@ function RepeatableBlock({ field, value, onChange, errors }) {
   )
 }
 
-function FormField({ field, value, onChange, error, hideNoteTitleBody = false }) {
+function FormField({ field, value, onChange, error, onUploadActivityChange }) {
   const {
     name,
     label,
@@ -272,32 +275,36 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
     helper,
     placeholder,
   } = field
-  const labelClasses = 'block text-sm font-semibold text-[#0A1628]/85'
+  const labelClasses = 'block text-sm font-medium text-foreground'
   const inputClasses =
-    'mt-1.5 w-full rounded-xl border border-[#0A1628]/10 bg-white px-3.5 py-2.5 text-sm text-[#0A1628] shadow-sm outline-none transition duration-300 placeholder:text-[#0A1628]/35 focus:border-[#D4A843] focus:shadow-[0_0_0_4px_rgba(212,168,67,0.18)]'
+    'mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
 
   if (type === 'note') {
     const isPlain = field.noteVariant === 'plain'
     const isSub = field.noteVariant === 'sub'
-    /** When StepForm already rendered this heading via SectionHeader (with icon), skip duplicate text. */
-    const showTitleBody = !hideNoteTitleBody
     return (
-      <div className="sm:col-span-2 space-y-2.5">
+      <div className={`sm:col-span-2 ${field.reviewBullets ? 'space-y-2' : 'space-y-2.5'}`}>
         {field.noteBadge ? (
           <span className="inline-block rounded-lg bg-[#D4A843]/12 px-2.5 py-1 text-xs font-bold tracking-wide text-[#7a5a14]">
             {field.noteBadge}
           </span>
         ) : null}
-        {showTitleBody && field.noteTitle ? (
+        {field.noteTitle ? (
           <h3
             className={`font-semibold text-[#0A1628] [font-family:'DM_Serif_Display',serif] ${
-              isSub ? 'text-sm' : isPlain ? 'text-xs font-bold uppercase tracking-widest text-[#0A1628]/45' : 'text-lg'
+              isSub
+                ? 'text-sm'
+                : isPlain
+                  ? 'text-xs font-bold uppercase tracking-widest text-[#0A1628]/45'
+                  : field.reviewBullets
+                    ? 'text-base leading-snug'
+                    : 'text-lg'
             }`}
           >
             {field.noteTitle}
           </h3>
         ) : null}
-        {showTitleBody && field.noteBody ? (
+        {field.noteBody ? (
           <p className={`text-xs leading-relaxed ${isPlain ? 'text-[#0A1628]/40' : 'text-[#0A1628]/45'}`}>
             {field.noteBody}
           </p>
@@ -308,11 +315,16 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
           </div>
         ) : null}
         {field.reviewBullets ? (
-          <div className="rounded-xl border border-[#0A1628]/10 bg-[#F8F7F4] p-4">
-            <ul className="list-inside list-disc space-y-2 text-sm text-[#0A1628]/70">
+          <div className="rounded-xl border border-[#D4A843]/25 bg-white/60 p-3 sm:p-4">
+            <ul className="space-y-2.5">
               {field.reviewBullets.map((item) => (
-                <li key={item} className="leading-relaxed">
-                  {item}
+                <li key={item} className="flex gap-2.5 text-sm leading-snug text-[#0A1628]/90">
+                  <CheckCircle2
+                    className="mt-0.5 h-4 w-4 shrink-0 text-[#c9a227]"
+                    strokeWidth={2}
+                    aria-hidden
+                  />
+                  <span className="[text-wrap:pretty]">{item}</span>
                 </li>
               ))}
             </ul>
@@ -324,7 +336,13 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
 
   if (type === 'repeatable') {
     return (
-      <RepeatableBlock field={field} value={value} onChange={onChange} errors={error && typeof error === 'object' ? error : {}} />
+      <RepeatableBlock
+        field={field}
+        value={value}
+        onChange={onChange}
+        errors={error && typeof error === 'object' ? error : {}}
+        onUploadActivityChange={onUploadActivityChange}
+      />
     )
   }
 
@@ -364,7 +382,7 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#0A1628]">{opt.label}</p>
                     {opt.description ? (
-                      <p className="mt-1 text-xs leading-relaxed text-[#0A1628]/50">{opt.description}</p>
+                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{opt.description}</p>
                     ) : null}
                   </div>
                 </div>
@@ -373,7 +391,7 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
           })}
         </div>
         {error && typeof error === 'string' ? (
-          <small className="mt-2 block text-xs font-medium text-red-600">{error}</small>
+          <small className="mt-2 block text-xs font-medium text-destructive">{error}</small>
         ) : null}
       </div>
     )
@@ -418,22 +436,31 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
           })}
         </div>
         {error ? (
-          <small className="mt-2 block text-xs font-medium text-red-600">{error}</small>
+          <small className="mt-2 block text-xs font-medium text-destructive">{error}</small>
         ) : null}
       </div>
     )
   }
 
   if (type === 'checkbox') {
+    const declaration = field.declarationStyle === true
     return (
-      <label className="flex items-start gap-3 rounded-xl border border-[#0A1628]/10 bg-white p-3.5 shadow-sm transition hover:border-[#D4A843]/45">
+      <label
+        className={`flex cursor-pointer items-start gap-3 transition ${
+          declaration
+            ? 'rounded-xl border-2 border-[#D4A843]/35 bg-white/90 p-3.5 shadow-inner shadow-[#D4A843]/10 hover:border-[#D4A843]/55 sm:p-4'
+            : 'rounded-md border border-border bg-card p-3.5 shadow-sm hover:border-[#D4A843]/50'
+        }`}
+      >
         <input
           type="checkbox"
-          className="mt-0.5 h-4 w-4 accent-[#D4A843]"
+          className={`mt-1 h-[18px] w-[18px] accent-[#D4A843] ${declaration ? 'shrink-0' : ''}`}
           checked={Boolean(value)}
           onChange={(event) => onChange(name, event.target.checked)}
         />
-        <span className="text-sm leading-relaxed text-[#0A1628]/80">
+        <span
+          className={`leading-relaxed text-foreground/90 ${declaration ? 'text-sm sm:text-[15px]' : 'text-sm'}`}
+        >
           {label} {required ? <span className="text-red-500">*</span> : null}
         </span>
       </label>
@@ -448,7 +475,7 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
           {label} {required ? <span className="text-red-500">*</span> : null}
         </span>
         <select
-          className={`${inputClasses} ${error ? 'border-red-400 focus:border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.16)]' : ''}`}
+          className={`${inputClasses} ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
           value={value ?? ''}
           required={required}
           onChange={(event) => onChange(name, event.target.value)}
@@ -461,10 +488,10 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
           ))}
         </select>
         {helper ? (
-          <small className="mt-1 block text-xs text-[#0A1628]/50">{helper}</small>
+          <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
         ) : null}
         {error ? (
-          <small className="mt-1 block text-xs font-medium text-red-600">{error}</small>
+          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
         ) : null}
       </label>
     )
@@ -475,30 +502,20 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
     const maxFileSizeMB = field.maxFileSizeMB ?? 5
     const formatsText = formatAcceptLabels(accept)
     return (
-      <label>
-        <span className={labelClasses}>
-          {label} {required ? <span className="text-red-500">*</span> : null}
-        </span>
-        <small className="mb-2 block text-xs text-[#0A1628]/50">
-          Accepted formats: {formatsText}. Maximum file size: {maxFileSizeMB} MB.
-        </small>
-        <input
-          className={`${inputClasses} ${error ? 'border-red-400 focus:border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.16)]' : ''}`}
-          type="file"
-          required={required && !value}
+      <div className="block">
+        <FileDropzone
           accept={accept}
-          onChange={(event) => onChange(name, event.target.files?.[0]?.name ?? '')}
+          maxFileSizeMB={maxFileSizeMB}
+          value={value ?? ''}
+          required={required}
+          error={error}
+          fieldLabel={label}
+          formatsLine={`Accepted formats: ${formatsText}. Maximum file size: ${maxFileSizeMB} MB.`}
+          helperText={helper}
+          onChange={(next) => onChange(name, next)}
+          onUploadActivityChange={onUploadActivityChange}
         />
-        {value ? (
-          <small className="mt-1 block text-xs text-[#0A1628]/50">Selected: {value}</small>
-        ) : null}
-        {helper ? (
-          <small className="mt-1 block text-xs text-[#0A1628]/50">{helper}</small>
-        ) : null}
-        {error ? (
-          <small className="mt-1 block text-xs font-medium text-red-600">{error}</small>
-        ) : null}
-      </label>
+      </div>
     )
   }
 
@@ -522,17 +539,41 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
           {label} {required ? <span className="text-red-500">*</span> : null}
         </span>
         <textarea
-          className={`${inputClasses} min-h-24 resize-y ${error ? 'border-red-400 focus:border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.16)]' : ''}`}
+          className={`${inputClasses} min-h-24 resize-y ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
           value={value ?? ''}
           required={required}
           placeholder={placeholder}
           onChange={(event) => onChange(name, event.target.value)}
         />
         {helper ? (
-          <small className="mt-1 block text-xs text-[#0A1628]/50">{helper}</small>
+          <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
         ) : null}
         {error ? (
-          <small className="mt-1 block text-xs font-medium text-red-600">{error}</small>
+          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
+        ) : null}
+      </label>
+    )
+  }
+
+  if (type === 'date') {
+    return (
+      <label>
+        <span className={labelClasses}>
+          {label} {required ? <span className="text-red-500">*</span> : null}
+        </span>
+        <DateInput
+          className={`mt-2 flex h-10 w-full rounded-md border border-input bg-background shadow-sm transition focus-within:outline-none focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background ${error ? 'border-destructive focus-within:ring-destructive' : ''}`}
+          value={value ?? ''}
+          required={required}
+          placeholder={placeholder ?? 'DD/MM/YYYY'}
+          onChange={(next) => onChange(name, next)}
+          aria-invalid={error ? 'true' : undefined}
+        />
+        {helper ? (
+          <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
+        ) : null}
+        {error ? (
+          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
         ) : null}
       </label>
     )
@@ -544,7 +585,7 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
         {label} {required ? <span className="text-red-500">*</span> : null}
       </span>
       <input
-        className={`${inputClasses} ${error ? 'border-red-400 focus:border-red-500 focus:shadow-[0_0_0_4px_rgba(239,68,68,0.16)]' : ''}`}
+        className={`${inputClasses} ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
         type={type}
         value={value ?? ''}
         required={required}
@@ -552,10 +593,10 @@ function FormField({ field, value, onChange, error, hideNoteTitleBody = false })
         onChange={(event) => onChange(name, event.target.value)}
       />
       {helper ? (
-        <small className="mt-1 block text-xs text-[#0A1628]/50">{helper}</small>
+        <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
       ) : null}
       {error ? (
-        <small className="mt-1 block text-xs font-medium text-red-600">{error}</small>
+        <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
       ) : null}
     </label>
   )

@@ -38,6 +38,13 @@
   }
 }
 
+@layer utilities {
+  /* Horizontal padding aligned with student portal StepForm */
+  .page-gutter-x {
+    @apply px-4 sm:px-6 lg:px-8;
+  }
+}
+
 @layer base {
   html {
     @apply antialiased;

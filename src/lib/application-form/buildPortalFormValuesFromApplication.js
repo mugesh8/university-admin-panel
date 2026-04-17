@@ -57,6 +57,16 @@ export function buildPortalFormValuesFromApplication(app) {
     ]
   }
 
+  const fileViewUrls = { ...(merged._fileViewUrls ?? {}) }
+  for (const d of app.documents ?? []) {
+    if (d.formField && d.fileUrl) {
+      fileViewUrls[d.formField] = d.fileUrl
+    }
+  }
+  if (Object.keys(fileViewUrls).length > 0) {
+    merged._fileViewUrls = fileViewUrls
+  }
+
   return merged
 }
 

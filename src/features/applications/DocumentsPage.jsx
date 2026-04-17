@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { AlertTriangle, FileScan, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Eye, FileScan, ShieldCheck } from 'lucide-react'
 import { Card, CardHeader } from '../../components/ui/Card.jsx'
 import { FilterBar } from '../../components/ui/FilterBar.jsx'
 import { Input } from '../../components/ui/Input.jsx'
@@ -119,8 +119,20 @@ export function DocumentsPage() {
     {
       key: 'actions',
       header: 'Actions',
-      render: () => (
+      render: (r) => (
         <div className="flex flex-wrap gap-1">
+          <Button
+            type="button"
+            variant="secondary"
+            className="!px-2.5 !py-1.5 text-xs"
+            disabled={!r.fileUrl}
+            onClick={() => {
+              if (r.fileUrl) window.open(r.fileUrl, '_blank', 'noopener,noreferrer')
+            }}
+          >
+            <Eye className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+            View
+          </Button>
           <Button type="button" variant="secondary" className="!px-2.5 !py-1.5 text-xs">
             Verify
           </Button>

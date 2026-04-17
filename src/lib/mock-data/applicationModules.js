@@ -83,6 +83,7 @@ export function getDocumentVerificationRows() {
         uploadedAt: d.uploadedAt ?? d.at,
         officer: d.officer,
         verifiedAt: d.at,
+        fileUrl: d.fileUrl ?? null,
       })
     }
   }

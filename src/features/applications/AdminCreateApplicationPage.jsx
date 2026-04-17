@@ -133,6 +133,17 @@ export function AdminCreateApplicationPage() {
       }
     }
 
+    if (field.type === 'date' && stringValue) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(String(stringValue))) {
+        return 'Please enter a valid date as DD/MM/YYYY.'
+      }
+      const [y, mo, d] = String(stringValue).split('-').map(Number)
+      const dt = new Date(y, mo - 1, d)
+      if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) {
+        return 'Please enter a valid date.'
+      }
+    }
+
     return ''
   }
 

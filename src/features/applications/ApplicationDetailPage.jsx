@@ -52,9 +52,6 @@ export function ApplicationDetailPage() {
         }
         actions={
           <>
-            <Badge tone={app.crmLinked ? 'success' : 'warning'}>
-              CRM {app.crmLinked ? 'linked' : 'not linked'}
-            </Badge>
             <Badge>{app.status}</Badge>
           </>
         }
@@ -90,7 +87,6 @@ export function ApplicationDetailPage() {
           ))}
           <TabTrigger value="comms">Communication log</TabTrigger>
           <TabTrigger value="timeline">Activity timeline</TabTrigger>
-          <TabTrigger value="crm">CRM data</TabTrigger>
           <TabTrigger value="actions">Actions</TabTrigger>
         </TabList>
 
@@ -138,20 +134,6 @@ export function ApplicationDetailPage() {
           )}
         </TabPanel>
 
-        <TabPanel value="crm">
-          {!app.crm ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No CRM correlation for this demo record.</p>
-          ) : (
-            <dl className="grid gap-3 sm:grid-cols-2">
-              <DetailItem label="Source" value={app.crm.source} />
-              <DetailItem label="Channel" value={app.crm.channel} />
-              <DetailItem label="Agent" value={app.crm.agent} />
-              <DetailItem label="Interactions" value={String(app.crm.interactions)} />
-              <DetailItem label="First contact" value={app.crm.firstContact} />
-            </dl>
-          )}
-        </TabPanel>
-
         <TabPanel value="actions">
           <div className="flex flex-wrap gap-2">
             <Button type="button">Change status</Button>
@@ -184,15 +166,6 @@ export function ApplicationDetailPage() {
           </div>
         </TabPanel>
       </Tabs>
-    </div>
-  )
-}
-
-function DetailItem({ label, value }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium uppercase text-[var(--color-text-muted)]">{label}</dt>
-      <dd className="mt-0.5 text-sm text-[var(--color-heading)]">{value}</dd>
     </div>
   )
 }
