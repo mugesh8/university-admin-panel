@@ -8,7 +8,8 @@ import { Badge } from '../../components/ui/Badge.jsx'
 import { DataTable } from '../../components/ui/DataTable.jsx'
 import { KpiCard } from '../../components/ui/KpiCard.jsx'
 import { applications } from '../../lib/mock-data/applications.js'
-import { bulkMessageCampaigns, emailTemplates } from '../../lib/mock-data/scaffold.js'
+import { bulkMessageCampaigns } from '../../lib/mock-data/scaffold.js'
+import { useEmailTemplatesStore } from '../../hooks/useEmailTemplatesStore.js'
 
 function formatDateTime(iso) {
   if (!iso) return '—'
@@ -20,6 +21,7 @@ function formatDateTime(iso) {
 }
 
 export function BulkMessagesPage() {
+  const { templates: emailTemplates } = useEmailTemplatesStore()
   const [program, setProgram] = useState('')
   const [intake, setIntake] = useState('')
   const [status, setStatus] = useState('')
@@ -28,7 +30,7 @@ export function BulkMessagesPage() {
   const programs = useMemo(() => [...new Set(applications.map((a) => a.program))].sort(), [])
   const intakes = useMemo(() => [...new Set(applications.map((a) => a.intake))].sort(), [])
   const statuses = useMemo(() => [...new Set(applications.map((a) => a.status))].sort(), [])
-  const activeTemplates = useMemo(() => emailTemplates.filter((t) => t.active), [])
+  const activeTemplates = useMemo(() => emailTemplates.filter((t) => t.active), [emailTemplates])
 
   const audienceCount = useMemo(() => {
     return applications.filter((a) => {

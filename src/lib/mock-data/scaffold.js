@@ -138,10 +138,11 @@ export const reportsCatalog = [
   { id: 'rep4', name: 'Revenue Report', exports: ['Excel', 'PDF'] },
 ]
 
+/** Admin panel users — `roleId` matches ids in `rbacRoles` (roles-permissions.js). */
 export const adminUsers = [
-  { id: 'u1', name: 'Dr. Ellis', role: 'Admissions Officer', active: true, email: 'ellis@mucm.edu' },
-  { id: 'u2', name: 'Ms. Porter', role: 'Admissions Manager', active: true, email: 'porter@mucm.edu' },
-  { id: 'u3', name: 'Finance Bot', role: 'Finance', active: false, email: 'finance@mucm.edu' },
+  { id: 'u1', name: 'Dr. Ellis', roleId: 'admissions_officer', active: true, email: 'ellis@mucm.edu' },
+  { id: 'u2', name: 'Ms. Porter', roleId: 'admissions_manager', active: true, email: 'porter@mucm.edu' },
+  { id: 'u3', name: 'Finance Bot', roleId: 'finance', active: false, email: 'finance@mucm.edu' },
 ]
 
 export const announcements = [
@@ -150,8 +151,22 @@ export const announcements = [
 ]
 
 export const faqItems = [
-  { id: 'f1', category: 'Admissions', question: 'How do I submit transcripts?', active: true },
-  { id: 'f2', category: 'Fees', question: 'What payment methods are accepted?', active: true },
+  {
+    id: 'f1',
+    category: 'Admissions',
+    question: 'How do I submit transcripts?',
+    answer:
+      'Upload official transcripts as PDFs in the Documents step of your application. If your institution issues secure e-transcripts, you may submit the verification link in the notes field. Unofficial screenshots are not accepted.',
+    active: true,
+  },
+  {
+    id: 'f2',
+    category: 'Fees',
+    question: 'What payment methods are accepted?',
+    answer:
+      'We accept major credit and debit cards, bank transfer, and authorized third-party payers. Wire instructions appear on your fee invoice after you receive an offer.',
+    active: true,
+  },
 ]
 
 export const supportTickets = [
@@ -162,6 +177,15 @@ export const supportTickets = [
     status: 'open',
     subject: 'Cannot upload PDF',
     updated: '2026-04-07',
+    messages: [
+      {
+        id: 'm-tk1-1',
+        from: 'applicant',
+        body:
+          'Hi — I keep getting an error when uploading my transcript PDF. The file is under 5MB. Can you help?',
+        sentAt: '2026-04-07T10:15:00.000Z',
+      },
+    ],
   },
   {
     id: 'tk2',
@@ -170,5 +194,19 @@ export const supportTickets = [
     status: 'resolved',
     subject: 'Wire transfer reference',
     updated: '2026-04-05',
+    messages: [
+      {
+        id: 'm-tk2-1',
+        from: 'applicant',
+        body: 'I sent the wire yesterday — please confirm the reference number on file is correct.',
+        sentAt: '2026-04-05T14:22:00.000Z',
+      },
+      {
+        id: 'm-tk2-2',
+        from: 'admin',
+        body: 'Thanks — we’ve matched your payment. No further action needed.',
+        sentAt: '2026-04-05T16:00:00.000Z',
+      },
+    ],
   },
 ]

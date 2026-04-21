@@ -8,13 +8,15 @@ import { Input } from '../../components/ui/Input.jsx'
 import { Select } from '../../components/ui/Select.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
 import { applications } from '../../lib/mock-data/applications.js'
-import { emailMergeFieldGroups, emailTemplates } from '../../lib/mock-data/scaffold.js'
+import { emailMergeFieldGroups } from '../../lib/mock-data/scaffold.js'
+import { useEmailTemplatesStore } from '../../hooks/useEmailTemplatesStore.js'
 
 const textareaClass =
   'min-h-[220px] w-full rounded-xl border border-[#0A1628]/15 bg-white px-3 py-2.5 text-sm text-[#0A1628] placeholder:text-[#0A1628]/45 focus:border-[#D4A843]/50 focus:outline-none focus:ring-2 focus:ring-[#D4A843]/35'
 
 export function ComposeEmailPage() {
-  const activeTemplates = useMemo(() => emailTemplates.filter((t) => t.active), [])
+  const { templates: emailTemplates } = useEmailTemplatesStore()
+  const activeTemplates = useMemo(() => emailTemplates.filter((t) => t.active), [emailTemplates])
   const [applicationId, setApplicationId] = useState('')
   const [templateId, setTemplateId] = useState('')
   const [toEmail, setToEmail] = useState('')
@@ -30,7 +32,7 @@ export function ComposeEmailPage() {
     const t = emailTemplates.find((x) => x.id === id)
     if (!t) return
     setSubject(t.subject)
-    setBody(t.bodyPreview)
+    setBody(t.body ?? t.bodyPreview ?? '')
   }
 
   function handleApplicationChange(id) {
