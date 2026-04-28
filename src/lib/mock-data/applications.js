@@ -1,3 +1,10 @@
+import { useSyncExternalStore } from 'react'
+import {
+  APPLICATION_PIPELINE_STAGES,
+  getCurrentPipelineStage,
+  getPipelineStageById,
+} from '../application-pipeline/applicationPipeline.js'
+
 /** Demo URL for “view uploaded document” in the admin Documents queue (opens in a new tab). */
 export const demoUploadedDocumentUrl =
   'https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf'
@@ -7,7 +14,7 @@ export const applications = [
     id: 'MUCM-2026-01402',
     name: 'Aisha Khan',
     citizenship: 'Pakistan',
-    status: 'Validation',
+    status: 'partial draft',
     submittedAt: '2026-03-28',
     assignedOfficer: 'Dr. Ellis',
     daysInStage: 5,
@@ -437,6 +444,166 @@ export const applications = [
   },
 ]
 
+const STAGE_COVERAGE_BASE_ID = 20000
+
+function buildStageCoverageApplication(stage, index) {
+  const serial = STAGE_COVERAGE_BASE_ID + index
+  const stageIndex = String(index + 1).padStart(2, '0')
+  const id = `MUCM-2026-${String(serial).padStart(5, '0')}`
+
+  return {
+    id,
+    name: `Stage Demo ${stageIndex}`,
+    citizenship: 'India',
+    status: stage.displayName,
+    pipelineStageId: stage.id,
+    submittedAt: '2026-04-15',
+    assignedOfficer: 'Stage QA Officer',
+    daysInStage: index + 1,
+    program: 'MD Program',
+    intake: 'September 2026',
+    country: 'India',
+    phone: `+91 90000 ${String(1000 + index).slice(-4)}`,
+    email: `stage-demo-${stageIndex}@example.com`,
+    referredBy: 'Internal Test Data',
+    leadSource: 'Internal Test Data',
+    crmLinked: false,
+    photoUrl: null,
+    personal: {
+      title: 'Mx',
+      dob: '2001-01-01',
+      passport: `IN-STAGE-${stageIndex}`,
+      address: 'New Delhi, India',
+    },
+    academic: {
+      qualification: 'BSc Life Sciences',
+      institution: 'Stage Coverage University',
+      personalStatement: `Demo application to represent stage: ${stage.displayName}.`,
+    },
+    documents: [],
+    financial: { invoices: [] },
+    interviews: [],
+    communications: [],
+    timeline: [
+      {
+        at: '2026-04-15T09:00:00.000Z',
+        actor: 'System',
+        action: `Seeded demo record at stage ${stage.displayName}`,
+      },
+    ],
+    crm: null,
+  }
+}
+
+for (const [index, stage] of APPLICATION_PIPELINE_STAGES.entries()) {
+  applications.push(buildStageCoverageApplication(stage, index))
+}
+
 export function getApplicationById(id) {
   return applications.find((a) => a.id === id) ?? null
+}
+
+const applicationListeners = new Set()
+let applicationsVersion = 0
+let applicationsSnapshot = {
+  version: applicationsVersion,
+  rows: applications,
+}
+
+function notifyApplicationsChanged() {
+  applicationsVersion += 1
+  applicationsSnapshot = {
+    version: applicationsVersion,
+    rows: applications,
+  }
+  for (const listener of applicationListeners) listener()
+}
+
+function subscribeApplications(listener) {
+  applicationListeners.add(listener)
+  return () => applicationListeners.delete(listener)
+}
+
+function getApplicationsSnapshot() {
+  return applicationsSnapshot
+}
+
+export function useApplications() {
+  const snapshot = useSyncExternalStore(
+    subscribeApplications,
+    getApplicationsSnapshot,
+    getApplicationsSnapshot,
+  )
+  return snapshot.rows
+}
+
+export function useApplicationById(id) {
+  const rows = useApplications()
+  return rows.find((a) => a.id === id) ?? null
+}
+
+export function setApplicationPipelineStage(applicationId, stageId, actor = 'Admin') {
+  const app = getApplicationById(applicationId)
+  const stage = getPipelineStageById(stageId)
+  if (!app || !stage) return false
+
+  app.pipelineStageId = stage.id
+  app.status = stage.displayName
+  app.daysInStage = 0
+  app.timeline = [
+    ...(app.timeline ?? []),
+    {
+      at: new Date().toISOString(),
+      actor,
+      action: `Status → ${stage.displayName}`,
+    },
+  ]
+  notifyApplicationsChanged()
+  return true
+}
+
+export function moveApplicationToNextStage(applicationId, actor = 'Admin') {
+  const app = getApplicationById(applicationId)
+  if (!app) return false
+
+  const currentStage = getCurrentPipelineStage(app)
+  if (!currentStage || !currentStage.nextIds || currentStage.nextIds.length === 0) return false
+
+  return setApplicationPipelineStage(applicationId, currentStage.nextIds[0], actor)
+}
+
+export function setApplicationDisposition(applicationId, dispositionLabel, actor = 'Admin') {
+  const app = getApplicationById(applicationId)
+  if (!app) return false
+  app.status = dispositionLabel
+  app.timeline = [
+    ...(app.timeline ?? []),
+    {
+      at: new Date().toISOString(),
+      actor,
+      action: `Disposition → ${dispositionLabel}`,
+    },
+  ]
+  notifyApplicationsChanged()
+  return true
+}
+
+export function markApplicationStageCompleted(applicationId, stageId, actor = 'Admin') {
+  const app = getApplicationById(applicationId)
+  const stage = getPipelineStageById(stageId)
+  if (!app || !stage) return false
+
+  const completedStageIds = new Set(app.completedStageIds ?? [])
+  completedStageIds.add(stage.id)
+  app.completedStageIds = Array.from(completedStageIds)
+  app.timeline = [
+    ...(app.timeline ?? []),
+    {
+      at: new Date().toISOString(),
+      actor,
+      action: `Completed stage → ${stage.displayName}`,
+    },
+  ]
+  notifyApplicationsChanged()
+  return true
 }

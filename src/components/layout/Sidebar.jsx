@@ -1,9 +1,18 @@
-import { NavLink } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { PanelLeftClose, PanelLeft } from 'lucide-react'
 import { MUCM_CREST_URL } from '../../lib/brand.js'
 import { sidebarNav } from '../../lib/nav.js'
 
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
+  const navigate = useNavigate()
+  const location = useLocation()
+  const path = location.pathname.replace(/\/$/, '') || '/'
+
+  function isItemActive(itemTo) {
+    if (itemTo === '/dashboard') return path === '/dashboard'
+    return path === itemTo || path.startsWith(`${itemTo}/`)
+  }
+
   return (
     <>
       {mobileOpen ? (
@@ -63,15 +72,17 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
               }
 
               const NavIcon = item.icon
+              const isActive = isItemActive(item.to)
               return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === '/dashboard'}
-                title={collapsed ? item.label : undefined}
-                onClick={onCloseMobile}
-                className={({ isActive }) =>
-                  `relative flex w-full items-center gap-2.5 overflow-hidden rounded-xl border text-left transition-all duration-300 xl:gap-3 xl:rounded-2xl ${
+                <button
+                  key={item.to}
+                  type="button"
+                  title={collapsed ? item.label : undefined}
+                  onClick={() => {
+                    navigate(item.to)
+                    onCloseMobile()
+                  }}
+                  className={`relative flex w-full items-center gap-2.5 overflow-hidden rounded-xl border text-left transition-all duration-300 xl:gap-3 xl:rounded-2xl ${
                     isActive
                       ? `border-[#D4A843]/70 bg-gradient-to-r from-[#D4A843]/25 to-[#D4A843]/5 text-[#f7dc95] shadow-lg shadow-[#D4A843]/10 ${
                           collapsed ? '' : 'animate-soft-pulse'
@@ -85,10 +96,8 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                             ? 'lg:border-transparent lg:bg-transparent lg:hover:border-transparent lg:hover:bg-white/[0.06]'
                             : ''
                         }`
-                  } ${collapsed ? 'lg:justify-center lg:px-0 lg:py-2 xl:py-2.5' : 'px-3 py-2.5 xl:px-3.5 xl:py-3'}`
-                }
-              >
-                {({ isActive }) => (
+                  } ${collapsed ? 'lg:justify-center lg:px-0 lg:py-2 xl:py-2.5' : 'px-3 py-2.5 xl:px-3.5 xl:py-3'}`}
+                >
                   <>
                     {isActive ? (
                       <span
@@ -116,8 +125,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
                       </span>
                     ) : null}
                   </>
-                )}
-              </NavLink>
+                </button>
               )
             })}
           </nav>

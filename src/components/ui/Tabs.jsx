@@ -28,7 +28,7 @@ export function TabList({ children, className = '' }) {
   )
 }
 
-export function TabTrigger({ value, children }) {
+export function TabTrigger({ value, children, disabled = false, title, className = '' }) {
   const ctx = useContext(TabsCtx)
   if (!ctx) throw new Error('TabTrigger outside Tabs')
   const active = ctx.value === value
@@ -37,12 +37,20 @@ export function TabTrigger({ value, children }) {
       type="button"
       role="tab"
       aria-selected={active}
-      onClick={() => ctx.setValue(value)}
-      className={`relative px-4 py-2.5 text-sm font-medium transition-colors ${
-        active
-          ? 'text-[var(--color-primary)] after:absolute after:inset-x-2 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[var(--color-primary)]'
-          : 'text-[var(--color-text-muted)] hover:text-[var(--color-heading)]'
-      }`}
+      aria-disabled={disabled}
+      disabled={disabled}
+      title={title}
+      onClick={() => {
+        if (disabled) return
+        ctx.setValue(value)
+      }}
+      className={`relative px-3 py-2.5 text-sm font-medium transition-colors ${
+        disabled
+          ? 'cursor-not-allowed text-[var(--color-text-muted)]/45'
+          : active
+            ? 'text-[var(--color-primary)] after:absolute after:inset-x-1 after:bottom-0 after:h-0.5 after:rounded-full after:bg-[var(--color-primary)]'
+            : 'text-[var(--color-text-muted)] hover:text-[var(--color-heading)]'
+      } ${className}`}
     >
       {children}
     </button>

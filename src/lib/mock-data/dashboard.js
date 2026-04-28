@@ -50,7 +50,7 @@ export const actionQueue = [
     name: 'Aisha Khan',
     action: 'Document verification overdue',
     daysWaiting: 5,
-    stage: 'Validation',
+    stage: 'Partial Draft',
   },
   {
     id: 'a2',

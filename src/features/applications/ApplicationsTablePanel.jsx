@@ -7,11 +7,16 @@ import { Input } from '../../components/ui/Input.jsx'
 import { Button } from '../../components/ui/Button.jsx'
 import { DataTable } from '../../components/ui/DataTable.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
-import { applications as allApplications } from '../../lib/mock-data/applications.js'
+import { useApplications } from '../../lib/mock-data/applications.js'
+import {
+  APPLICATION_PIPELINE_STAGES,
+  getCurrentPipelineStage,
+} from '../../lib/application-pipeline/applicationPipeline.js'
 import { exportApplicationsToCsv } from './exportApplicationsCsv.js'
 
 export function ApplicationsTablePanel({ showExportExcel = false }) {
   const navigate = useNavigate()
+  const allApplications = useApplications()
   const [search, setSearch] = useState('')
   const [statusFilters, setStatusFilters] = useState([])
   const [countryFilters, setCountryFilters] = useState([])
@@ -21,11 +26,13 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
   const hasActiveFilters =
     search.trim() !== '' || statusFilters.length > 0 || countryFilters.length > 0
 
+  const getRowStatus = (application) => getCurrentPipelineStage(application).displayName
+
   const rows = useMemo(() => {
     let list = [...allApplications]
     if (statusFilters.length > 0) {
       const allow = new Set(statusFilters)
-      list = list.filter((a) => allow.has(a.status))
+      list = list.filter((a) => allow.has(getRowStatus(a)))
     }
     if (countryFilters.length > 0) {
       const allow = new Set(countryFilters)
@@ -50,9 +57,7 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
     setCountryFilters([])
   }
 
-  const statuses = [...new Set(allApplications.map((a) => a.status))].sort((a, b) =>
-    a.localeCompare(b),
-  )
+  const statuses = APPLICATION_PIPELINE_STAGES.map((s) => s.displayName)
   const countries = [...new Set(allApplications.map((a) => a.country))].sort((a, b) =>
     a.localeCompare(b),
   )
@@ -76,7 +81,8 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
       header: 'Status',
       sortable: true,
       sortType: 'string',
-      render: (r) => <Badge tone="info">{r.status}</Badge>,
+      sortValue: (r) => getRowStatus(r),
+      render: (r) => <Badge tone="info">{getRowStatus(r)}</Badge>,
     },
     { key: 'submittedAt', header: 'Submitted', sortable: true, sortType: 'date' },
     { key: 'assignedOfficer', header: 'Officer', sortable: true, sortType: 'string' },

@@ -1,20 +1,20 @@
 import { useEffect, useMemo } from 'react'
 import { Link, useParams } from 'react-router-dom'
-import { User, Mail, History, Database, Zap } from 'lucide-react'
+import { User, Mail, History } from 'lucide-react'
 import { usePageTitleContext } from '../../context/PageTitleContext.jsx'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
-import { Button } from '../../components/ui/Button.jsx'
 import { Card } from '../../components/ui/Card.jsx'
 import { Tabs, TabList, TabPanel, TabTrigger } from '../../components/ui/Tabs.jsx'
 import { buildPortalFormValuesFromApplication } from '../../lib/application-form/buildPortalFormValuesFromApplication.js'
 import { portalFormSteps, portalStepTabValue } from '../../lib/application-form/portalFormSteps.js'
-import { getApplicationById } from '../../lib/mock-data/applications.js'
+import { useApplicationById } from '../../lib/mock-data/applications.js'
 import { ApplicationFormStepPanel } from './ApplicationFormStepPanel.jsx'
+import { ApplicationActionsPanel } from './ApplicationActionsPanel.jsx'
 
 export function ApplicationDetailPage() {
   const { id } = useParams()
-  const app = getApplicationById(id ?? '')
+  const app = useApplicationById(id ?? '')
   const { setPageTitleOverride } = usePageTitleContext()
   const portalFormValues = useMemo(() => (app ? buildPortalFormValuesFromApplication(app) : {}), [app])
 
@@ -135,35 +135,7 @@ export function ApplicationDetailPage() {
         </TabPanel>
 
         <TabPanel value="actions">
-          <div className="flex flex-wrap gap-2">
-            <Button type="button">Change status</Button>
-            <Button type="button" variant="secondary">
-              Assign officer
-            </Button>
-            <Button type="button" variant="secondary">
-              Schedule interview
-            </Button>
-            <Button type="button" variant="secondary">
-              Send templated email
-            </Button>
-            <Button type="button" variant="secondary">
-              Add internal note
-            </Button>
-            <Button type="button" variant="secondary">
-              Generate offer letter
-            </Button>
-            <Button type="button" className="bg-[var(--color-accent)] hover:opacity-90">
-              Enrol student
-            </Button>
-            <Button type="button" variant="secondary">
-              <Database className="h-4 w-4" />
-              Download all (ZIP)
-            </Button>
-            <Button type="button" variant="ghost">
-              <Zap className="h-4 w-4" />
-              Valid next stages only (enforced in production)
-            </Button>
-          </div>
+          <ApplicationActionsPanel application={app} />
         </TabPanel>
       </Tabs>
     </div>
