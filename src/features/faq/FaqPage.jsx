@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Eye, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Card } from '../../components/ui/Card.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
@@ -8,8 +9,7 @@ import { Input } from '../../components/ui/Input.jsx'
 import { Select } from '../../components/ui/Select.jsx'
 import { FilterBar } from '../../components/ui/FilterBar.jsx'
 import { useFaqItemsStore } from '../../hooks/useFaqItemsStore.js'
-
-const CATEGORY_OPTIONS = ['Admissions', 'Fees', 'Academic', 'Programs', 'Other']
+import { useFaqCategoriesStore } from '../../hooks/useFaqCategoriesStore.js'
 
 const textareaClass =
   'min-h-[160px] w-full rounded-xl border border-[#0A1628]/15 bg-white px-3 py-2.5 text-sm text-[#0A1628] placeholder:text-[#0A1628]/45 focus:border-[#D4A843]/50 focus:outline-none focus:ring-2 focus:ring-[#D4A843]/35'
@@ -52,7 +52,9 @@ function ModalBackdrop({ children, onClose, title, wide }) {
 }
 
 export function FaqPage() {
-  const { faqItems, setFaqItems } = useFaqItemsStore()
+  const navigate = useNavigate()
+  const { faqItems, loading, saving, error, createFaqItem, editFaqItem, removeFaqItem } = useFaqItemsStore()
+  const { faqCategories } = useFaqCategoriesStore()
 
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
@@ -67,11 +69,11 @@ export function FaqPage() {
   const [formQuestion, setFormQuestion] = useState('')
   const [formAnswer, setFormAnswer] = useState('')
   const [formActive, setFormActive] = useState(true)
+  const [formError, setFormError] = useState('')
 
   const categories = useMemo(() => {
-    const fromData = [...new Set(faqItems.map((f) => f.category))].filter(Boolean)
-    return [...new Set([...CATEGORY_OPTIONS, ...fromData])].sort()
-  }, [faqItems])
+    return faqCategories.filter((c) => c.active).map((c) => c.name).filter(Boolean)
+  }, [faqCategories])
 
   const filtered = useMemo(() => {
     let list = [...faqItems]
@@ -92,10 +94,11 @@ export function FaqPage() {
 
   function openAdd() {
     setEditingId(null)
-    setFormCategory('Admissions')
+    setFormCategory(categories[0] || '')
     setFormQuestion('')
     setFormAnswer('')
     setFormActive(true)
+    setFormError('')
     setFormOpen(true)
   }
 
@@ -105,48 +108,55 @@ export function FaqPage() {
     setFormQuestion(f.question)
     setFormAnswer(f.answer ?? '')
     setFormActive(Boolean(f.active))
+    setFormError('')
     setFormOpen(true)
   }
 
-  function saveForm(e) {
+  async function saveForm(e) {
     e.preventDefault()
     const question = formQuestion.trim()
     const answer = formAnswer.trim()
-    if (!question) return
+    if (!question || !answer) return
+    const matchedCategory = faqCategories.find((c) => c.name === formCategory)
 
     if (editingId) {
-      setFaqItems((prev) =>
-        prev.map((f) =>
-          f.id === editingId
-            ? {
-                ...f,
-                category: formCategory || 'Other',
-                question,
-                answer,
-                active: formActive,
-              }
-            : f,
-        ),
-      )
-    } else {
-      const id = `f-${Date.now()}`
-      setFaqItems((prev) => [
-        ...prev,
-        {
-          id,
-          category: formCategory || 'Other',
+      try {
+        await editFaqItem(editingId, {
+          category_id: matchedCategory?.id,
+          category: formCategory || 'General',
           question,
           answer,
-          active: formActive,
-        },
-      ])
+          is_published: formActive,
+        })
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : 'Failed to update FAQ')
+        return
+      }
+    } else {
+      try {
+        await createFaqItem({
+          category_id: matchedCategory?.id,
+          category: formCategory || 'General',
+          question,
+          answer,
+          sort_order: faqItems.length,
+          is_published: formActive,
+        })
+      } catch (err) {
+        setFormError(err instanceof Error ? err.message : 'Failed to create FAQ')
+        return
+      }
     }
     setFormOpen(false)
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return
-    setFaqItems((prev) => prev.filter((f) => f.id !== deleteTarget.id))
+    try {
+      await removeFaqItem(deleteTarget.id)
+    } catch {
+      return
+    }
     if (previewItem?.id === deleteTarget.id) setPreviewItem(null)
     setDeleteTarget(null)
   }
@@ -155,10 +165,16 @@ export function FaqPage() {
     <div>
       <PageHeader
         actions={
-          <Button type="button" onClick={openAdd}>
-            <Plus className="h-4 w-4" aria-hidden />
-            Add FAQ
-          </Button>
+          <>
+            <Button type="button" variant="secondary" onClick={() => navigate('/faq/categories')}>
+              <Plus className="h-4 w-4" aria-hidden />
+              Add FAQ category
+            </Button>
+            <Button type="button" onClick={openAdd}>
+              <Plus className="h-4 w-4" aria-hidden />
+              Add FAQ
+            </Button>
+          </>
         }
       />
 
@@ -191,7 +207,9 @@ export function FaqPage() {
       </FilterBar>
 
       <ul className="space-y-3">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <Card className="py-10 text-center text-sm text-[var(--color-text-muted)]">Loading FAQs...</Card>
+        ) : filtered.length === 0 ? (
           <Card className="py-10 text-center text-sm text-[var(--color-text-muted)]">
             No FAQs match your filters.
           </Card>
@@ -228,6 +246,7 @@ export function FaqPage() {
           ))
         )}
       </ul>
+      {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 
       {previewItem ? (
         <ModalBackdrop wide title="Preview" onClose={() => setPreviewItem(null)}>
@@ -270,6 +289,9 @@ export function FaqPage() {
         <ModalBackdrop wide title={editingId ? 'Edit FAQ' : 'Add FAQ'} onClose={() => setFormOpen(false)}>
           <form onSubmit={saveForm} className="space-y-4">
             <Select label="Category" value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
+              {categories.length === 0 ? (
+                <option value="">No categories available</option>
+              ) : null}
               {categories.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -299,10 +321,13 @@ export function FaqPage() {
               Published (visible to applicants)
             </label>
             <div className="flex flex-wrap justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
+              {formError ? <p className="mr-auto text-sm text-red-700">{formError}</p> : null}
               <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
                 Cancel
               </Button>
-              <Button type="submit">{editingId ? 'Save changes' : 'Create FAQ'}</Button>
+              <Button type="submit" disabled={saving}>
+                {editingId ? 'Save changes' : 'Create FAQ'}
+              </Button>
             </div>
           </form>
         </ModalBackdrop>
@@ -319,7 +344,7 @@ export function FaqPage() {
             <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={confirmDelete}>
+            <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
               Delete
             </Button>
           </div>

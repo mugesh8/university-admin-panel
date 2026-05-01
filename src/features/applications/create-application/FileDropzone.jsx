@@ -54,6 +54,14 @@ function runUploadProgress(onProgress, signal) {
     })
 }
 
+function isImageAccept(accept) {
+  const exts = parseAcceptExtensions(accept)
+  return exts.every((e) => {
+    const x = e.startsWith('.') ? e : `.${e}`
+    return ['.png', '.jpg', '.jpeg', '.webp', '.gif'].includes(x)
+  })
+}
+
 export default function FileDropzone({
   accept = '.pdf,.jpg,.jpeg,.png',
   maxFileSizeMB = 5,
@@ -69,6 +77,10 @@ export default function FileDropzone({
   helperText,
   /** +1 when a simulated upload starts, −1 when it ends (success, cancel, or error). */
   onUploadActivityChange,
+  /** If true (image-only accepts), store a data URL so the UI can preview the image. */
+  storeAsDataUrl = false,
+  /** Smaller dropzone / success card (e.g. signature). */
+  compact = false,
 }) {
   const inputRef = useRef(null)
   const abortRef = useRef(null)
@@ -78,7 +90,9 @@ export default function FileDropzone({
   const [isUploading, setIsUploading] = useState(false)
   const [pendingFileName, setPendingFileName] = useState('')
   const id = useId()
-  const hasFile = Boolean(value && String(value).trim())
+  const valueStr = value != null ? String(value) : ''
+  const isDataUrlImage = valueStr.startsWith('data:image/')
+  const hasFile = Boolean(valueStr.trim())
 
   const resetInput = useCallback(() => {
     if (inputRef.current) {
@@ -118,10 +132,25 @@ export default function FileDropzone({
 
   const finalizeFile = useCallback(
     (file) => {
+      const useData =
+        storeAsDataUrl && isImageAccept(accept) && file.type.startsWith('image/')
+      if (useData) {
+        const reader = new FileReader()
+        reader.onload = () => {
+          onChange(reader.result)
+          syncInputFile(file)
+        }
+        reader.onerror = () => {
+          onChange(file.name)
+          syncInputFile(file)
+        }
+        reader.readAsDataURL(file)
+        return
+      }
       onChange(file.name)
       syncInputFile(file)
     },
-    [onChange, syncInputFile],
+    [accept, onChange, storeAsDataUrl, syncInputFile],
   )
 
   const startUpload = useCallback(
@@ -242,21 +271,33 @@ export default function FileDropzone({
       />
 
       {hasFile && !showProgress ? (
-        <div className="relative overflow-hidden rounded-xl border border-[#D4A843]/70 bg-card px-3 py-2.5 shadow-[0_8px_24px_rgba(16,185,129,0.12)] transition sm:px-3.5 sm:py-3">
+        <div className={`relative overflow-hidden rounded-xl border border-[#D4A843]/70 bg-card shadow-[0_8px_24px_rgba(16,185,129,0.12)] transition ${compact ? 'px-2.5 py-2 sm:px-3 sm:py-2.5' : 'px-3 py-2.5 sm:px-3.5 sm:py-3'}`}>
           <div className="flex items-start gap-2.5">
-            <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#16A34A]/12 text-[#16A34A]">
-              <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />
-            </span>
+            {isDataUrlImage ? (
+              <div className="flex-shrink-0 rounded-lg border border-[#0A1628]/10 bg-white p-1 shadow-sm">
+                <img
+                  src={valueStr}
+                  alt="Uploaded signature"
+                  className={`block max-h-14 w-auto max-w-[200px] object-contain object-left sm:max-h-16 ${compact ? 'max-h-12 max-w-[160px] sm:max-h-14' : ''}`}
+                />
+              </div>
+            ) : (
+              <span className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-[#16A34A]/12 text-[#16A34A]">
+                <CheckCircle2 className="h-4 w-4" strokeWidth={1.8} />
+              </span>
+            )}
             <div className="min-w-0 flex-1 pt-0.5">
               {fieldLabel ? (
                 <p className="text-sm font-semibold leading-snug text-foreground">
                   {fieldLabel} {required ? <span className="text-red-500">*</span> : null}
                 </p>
               ) : null}
-              <p className={`text-sm font-semibold text-[#16A34A] ${fieldLabel ? 'mt-1.5' : ''}`}>File added</p>
-              <p className="mt-0.5 truncate text-sm text-[#16A34A]/90" title={value}>
-                {value}
-              </p>
+              <p className={`text-sm font-semibold text-[#16A34A] ${fieldLabel ? 'mt-1.5' : ''}`}>{isDataUrlImage ? 'Signature image added' : 'File added'}</p>
+              {!isDataUrlImage ? (
+                <p className="mt-0.5 truncate text-sm text-[#16A34A]/90" title={valueStr}>
+                  {valueStr}
+                </p>
+              ) : null}
             </div>
             <button
               type="button"

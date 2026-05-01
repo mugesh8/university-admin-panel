@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { Eye, Pencil, Plus, Trash2, UserPlus, X } from 'lucide-react'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Button } from '../../components/ui/Button.jsx'
@@ -6,15 +6,19 @@ import { Badge } from '../../components/ui/Badge.jsx'
 import { DataTable } from '../../components/ui/DataTable.jsx'
 import { Input } from '../../components/ui/Input.jsx'
 import { Select } from '../../components/ui/Select.jsx'
-import { permissionLabel } from '../../lib/mock-data/roles-permissions.js'
-import { useRbacStore } from '../../hooks/useRbacStore.js'
-
-const LEVEL_OPTIONS = [
-  { value: 'none', label: '—' },
-  { value: 'view', label: 'View' },
-  { value: 'edit', label: 'Edit' },
-  { value: 'full', label: 'Full' },
-]
+import { permissionLabel, rbacModules } from '../../lib/mock-data/roles-permissions.js'
+import { useAuth } from '../auth/useAuth.js'
+import {
+  createAdmin,
+  createAdminRole,
+  deleteAdmin,
+  deleteAdminRole,
+  fetchAdmins,
+  fetchAdminRoles,
+  updateAdmin,
+  updateAdminPermissions,
+  updateAdminRole,
+} from '../../lib/api/adminRbacApi.js'
 
 function levelTone(level) {
   if (level === 'full') return 'success'
@@ -63,26 +67,14 @@ function ModalBackdrop({ children, onClose, title, wide }) {
 const textareaClass =
   'min-h-[72px] w-full rounded-xl border border-[#0A1628]/15 bg-white px-3 py-2.5 text-sm text-[#0A1628] placeholder:text-[#0A1628]/45 focus:border-[#D4A843]/50 focus:outline-none focus:ring-2 focus:ring-[#D4A843]/35'
 
-function exportMatrixJson(roles, matrix, modules, accounts) {
-  const payload = {
-    exportedAt: new Date().toISOString(),
-    roles,
-    matrix,
-    modules,
-    adminAccounts: accounts,
-  }
-  const text = JSON.stringify(payload, null, 2)
-  const blob = new Blob([text], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `rbac-matrix-${new Date().toISOString().slice(0, 10)}.json`
-  a.click()
-  URL.revokeObjectURL(url)
-}
-
 export function RolesPermissionsPage() {
-  const { roles, matrix, accounts, setRbacState, rbacModules: modules } = useRbacStore()
+  const { token } = useAuth()
+  const modules = rbacModules
+  const [roles, setRoles] = useState([])
+  const [accounts, setAccounts] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [activeTab, setActiveTab] = useState('admin')
 
   const [viewRole, setViewRole] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -92,9 +84,10 @@ export function RolesPermissionsPage() {
   const [formName, setFormName] = useState('')
   const [formSummary, setFormSummary] = useState('')
   const [formActive, setFormActive] = useState(true)
-  const [formLevels, setFormLevels] = useState(() => Object.fromEntries(modules.map((m) => [m.id, 'none'])))
 
   const [accountView, setAccountView] = useState(null)
+  const [accountPermissionsView, setAccountPermissionsView] = useState(null)
+  const [accountPermissionDraft, setAccountPermissionDraft] = useState({})
   const [accountFormOpen, setAccountFormOpen] = useState(false)
   const [accountEditingId, setAccountEditingId] = useState(null)
   const [accountDeleteTarget, setAccountDeleteTarget] = useState(null)
@@ -103,12 +96,134 @@ export function RolesPermissionsPage() {
   const [accRoleId, setAccRoleId] = useState('')
   const [accActive, setAccActive] = useState(true)
 
+  const matrix = useMemo(() => {
+    const firstByRole = {}
+    for (const a of accounts) {
+      if (!firstByRole[a.roleId] && a.permissions && typeof a.permissions === 'object') {
+        firstByRole[a.roleId] = a.permissions
+      }
+    }
+    const out = {}
+    for (const role of roles) out[role.id] = firstByRole[role.id] || {}
+    return out
+  }, [accounts, roles])
+
+  async function loadRbacData() {
+    setLoading(true)
+    setError('')
+    try {
+      const [rolesRes, adminsRes] = await Promise.all([fetchAdminRoles(token), fetchAdmins(token)])
+      if (!rolesRes.success) throw new Error(rolesRes.message || 'Failed to load roles')
+      if (!adminsRes.success) throw new Error(adminsRes.message || 'Failed to load admins')
+
+      setRoles(
+        (rolesRes.data || []).map((r) => ({
+          id: r.id,
+          name: r.name,
+          summary: r.summary || '',
+          active: Boolean(r.is_active),
+          usersAssigned: Number(r.users_assigned || 0),
+        })),
+      )
+      setAccounts(
+        (adminsRes.data || []).map((a) => ({
+          id: a.id,
+          name: a.full_name || '',
+          email: a.email || '',
+          roleId: a.role_id,
+          roleName: a.role?.name || '',
+          active: Boolean(a.is_active),
+          permissions: a.permissions && typeof a.permissions === 'object' ? a.permissions : {},
+        })),
+      )
+    } catch (e) {
+      setError(e.message || 'Failed to load data')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    loadRbacData()
+  }, [token])
+
   function countAccountsForRole(roleId) {
     return accounts.filter((a) => a.roleId === roleId).length
   }
 
   function roleNameById(roleId) {
-    return roles.find((r) => r.id === roleId)?.name ?? roleId
+    const fromRole = roles.find((r) => r.id === roleId)?.name
+    const fromAdmin = accounts.find((a) => a.roleId === roleId)?.roleName
+    return fromRole ?? fromAdmin ?? roleId
+  }
+
+  const permissionPopupModules = modules
+    .filter((m) => m.id !== 'users_logs')
+    .sort((a, b) => {
+      if (a.id === 'roles_permissions' && b.id === 'settings') return -1
+      if (a.id === 'settings' && b.id === 'roles_permissions') return 1
+      return 0
+    })
+
+  function crudForLevel(level) {
+    if (level === 'full') return { create: true, read: true, update: true, delete: true }
+    if (level === 'edit') return { create: false, read: true, update: true, delete: false }
+    if (level === 'view') return { create: false, read: true, update: false, delete: false }
+    return { create: false, read: false, update: false, delete: false }
+  }
+
+  function levelFromCrudFlags(flags) {
+    if (flags.create || flags.delete) return 'full'
+    if (flags.update) return 'edit'
+    if (flags.read) return 'view'
+    return 'none'
+  }
+
+  function openAccountPermissions(a) {
+    const roleMatrix = a.permissions && typeof a.permissions === 'object' ? a.permissions : {}
+    const draft = Object.fromEntries(
+      permissionPopupModules.map((m) => {
+        const level = roleMatrix[m.id] ?? 'none'
+        return [m.id, crudForLevel(level)]
+      }),
+    )
+    setAccountPermissionDraft(draft)
+    setAccountPermissionsView(a)
+  }
+
+  function enableAllPermissions() {
+    const allEnabled = Object.fromEntries(
+      permissionPopupModules.map((m) => [
+        m.id,
+        { create: true, read: true, update: true, delete: true },
+      ]),
+    )
+    setAccountPermissionDraft(allEnabled)
+  }
+
+  function toggleAccountCrud(moduleId, key, checked) {
+    setAccountPermissionDraft((prev) => {
+      const current = prev[moduleId] ?? { create: false, read: false, update: false, delete: false }
+      const next = { ...current, [key]: checked }
+      return { ...prev, [moduleId]: next }
+    })
+  }
+
+  async function saveAccountPermissions() {
+    if (!accountPermissionsView) return
+    const nextRow = Object.fromEntries(
+      permissionPopupModules.map((m) => {
+        const flags = accountPermissionDraft[m.id] ?? { create: false, read: false, update: false, delete: false }
+        return [m.id, levelFromCrudFlags(flags)]
+      }),
+    )
+    const res = await updateAdminPermissions(accountPermissionsView.id, nextRow, token)
+    if (!res.success) {
+      setError(res.message || 'Failed to save permissions')
+      return
+    }
+    await loadRbacData()
+    setAccountPermissionsView(null)
   }
 
   function openAdd() {
@@ -116,7 +231,6 @@ export function RolesPermissionsPage() {
     setFormName('')
     setFormSummary('')
     setFormActive(true)
-    setFormLevels(Object.fromEntries(modules.map((m) => [m.id, 'none'])))
     setFormOpen(true)
   }
 
@@ -125,54 +239,41 @@ export function RolesPermissionsPage() {
     setFormName(t.name)
     setFormSummary(t.summary)
     setFormActive(Boolean(t.active))
-    const row = matrix[t.id] ?? {}
-    setFormLevels(
-      Object.fromEntries(
-        modules.map((m) => {
-          const v = row[m.id]
-          return [m.id, ['none', 'view', 'edit', 'full'].includes(v) ? v : 'none']
-        }),
-      ),
-    )
     setFormOpen(true)
   }
 
-  function saveForm(e) {
+  async function saveForm(e) {
     e.preventDefault()
     const name = formName.trim()
     const summary = formSummary.trim()
     if (!name) return
 
-    const row = { ...formLevels }
-
     if (editingId) {
-      setRbacState((s) => ({
-        ...s,
-        roles: s.roles.map((r) =>
-          r.id === editingId ? { ...r, name, summary, active: formActive } : r,
-        ),
-        matrix: { ...s.matrix, [editingId]: row },
-      }))
+      const res = await updateAdminRole(editingId, { name, summary: summary || null, is_active: formActive }, token)
+      if (!res.success) {
+        setError(res.message || 'Failed to update role')
+        return
+      }
     } else {
-      const id = `role_${Date.now()}`
-      setRbacState((s) => ({
-        ...s,
-        roles: [...s.roles, { id, name, summary, active: formActive, usersAssigned: 0 }],
-        matrix: { ...s.matrix, [id]: row },
-      }))
+      const res = await createAdminRole({ name, summary: summary || null, is_active: formActive }, token)
+      if (!res.success) {
+        setError(res.message || 'Failed to create role')
+        return
+      }
     }
+    await loadRbacData()
     setFormOpen(false)
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return
     const rid = deleteTarget.id
-    setRbacState((s) => ({
-      ...s,
-      roles: s.roles.filter((r) => r.id !== rid),
-      matrix: Object.fromEntries(Object.entries(s.matrix).filter(([k]) => k !== rid)),
-      accounts: s.accounts.filter((a) => a.roleId !== rid),
-    }))
+    const res = await deleteAdminRole(rid, token)
+    if (!res.success) {
+      setError(res.message || 'Failed to delete role')
+      return
+    }
+    await loadRbacData()
     if (viewRole?.id === rid) setViewRole(null)
     setDeleteTarget(null)
   }
@@ -195,35 +296,41 @@ export function RolesPermissionsPage() {
     setAccountFormOpen(true)
   }
 
-  function saveAccount(e) {
+  async function saveAccount(e) {
     e.preventDefault()
     const name = accName.trim()
     const email = accEmail.trim()
     if (!name || !email || !accRoleId) return
 
     if (accountEditingId) {
-      setRbacState((s) => ({
-        ...s,
-        accounts: s.accounts.map((a) =>
-          a.id === accountEditingId ? { ...a, name, email, roleId: accRoleId, active: accActive } : a,
-        ),
-      }))
+      const res = await updateAdmin(
+        accountEditingId,
+        { full_name: name, email, role_id: accRoleId, is_active: accActive },
+        token,
+      )
+      if (!res.success) {
+        setError(res.message || 'Failed to update account')
+        return
+      }
     } else {
-      const id = `u_${Date.now()}`
-      setRbacState((s) => ({
-        ...s,
-        accounts: [...s.accounts, { id, name, email, roleId: accRoleId, active: accActive }],
-      }))
+      const res = await createAdmin({ full_name: name, email, role_id: accRoleId, is_active: accActive }, token)
+      if (!res.success) {
+        setError(res.message || 'Failed to create account')
+        return
+      }
     }
+    await loadRbacData()
     setAccountFormOpen(false)
   }
 
-  function confirmAccountDelete() {
+  async function confirmAccountDelete() {
     if (!accountDeleteTarget) return
-    setRbacState((s) => ({
-      ...s,
-      accounts: s.accounts.filter((a) => a.id !== accountDeleteTarget.id),
-    }))
+    const res = await deleteAdmin(accountDeleteTarget.id, token)
+    if (!res.success) {
+      setError(res.message || 'Failed to delete account')
+      return
+    }
+    await loadRbacData()
     if (accountView?.id === accountDeleteTarget.id) setAccountView(null)
     setAccountDeleteTarget(null)
   }
@@ -292,162 +399,129 @@ export function RolesPermissionsPage() {
 
   return (
     <div className="mx-auto w-full max-w-[80rem] space-y-6">
+      {error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
+      ) : null}
       <PageHeader
         actions={
           <>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => exportMatrixJson(roles, matrix, modules, accounts)}
-            >
-              Export matrix
-            </Button>
-            <Button type="button" variant="secondary" onClick={openAccountAdd}>
-              <UserPlus className="h-4 w-4" aria-hidden />
-              Create role account
-            </Button>
-            <Button type="button" variant="primary" onClick={openAdd}>
-              <Plus className="h-4 w-4" aria-hidden />
-              Add role
-            </Button>
+            {activeTab === 'admin' ? (
+              <Button type="button" variant="secondary" onClick={openAccountAdd}>
+                <UserPlus className="h-4 w-4" aria-hidden />
+                Create role account
+              </Button>
+            ) : (
+              <Button type="button" variant="primary" onClick={openAdd}>
+                <Plus className="h-4 w-4" aria-hidden />
+                Add role
+              </Button>
+            )}
           </>
         }
       />
-      <div className="space-y-3">
-        <DataTable columns={roleColumns} rows={roles} getRowKey={(r) => r.id} pageSize={10} />
+      <div className="inline-flex rounded-xl border border-[#0A1628]/12 bg-white p-1">
+        <button
+          type="button"
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeTab === 'admin' ? 'bg-[#0A1628] text-white' : 'text-[#0A1628] hover:bg-[#0A1628]/8'
+          }`}
+          onClick={() => setActiveTab('admin')}
+        >
+          Admin
+        </button>
+        <button
+          type="button"
+          className={`rounded-lg px-4 py-2 text-sm font-semibold transition ${
+            activeTab === 'roles' ? 'bg-[#0A1628] text-white' : 'text-[#0A1628] hover:bg-[#0A1628]/8'
+          }`}
+          onClick={() => setActiveTab('roles')}
+        >
+          Admin roles
+        </button>
       </div>
 
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Admin accounts</h2>
-            <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-              Staff logins linked to a role. Counts in the roles table match these rows.
-            </p>
-          </div>
-          <Button type="button" onClick={openAccountAdd}>
-            <UserPlus className="h-4 w-4" aria-hidden />
-            Create role account
-          </Button>
+      {activeTab === 'roles' ? (
+        <div className="space-y-3">
+          <DataTable columns={roleColumns} rows={roles} getRowKey={(r) => r.id} pageSize={10} />
         </div>
-        <DataTable
-          columns={[
-            {
-              key: 'name',
-              header: 'Name',
-              sortable: true,
-              sortType: 'string',
-              render: (a) => <span className="font-medium text-[var(--color-heading)]">{a.name}</span>,
-            },
-            {
-              key: 'email',
-              header: 'Email',
-              sortable: true,
-              sortType: 'string',
-              render: (a) => <span className="text-sm text-[var(--color-text)]">{a.email}</span>,
-            },
-            {
-              key: 'roleId',
-              header: 'Role',
-              sortable: true,
-              sortType: 'string',
-              sortValue: (a) => roleNameById(a.roleId),
-              render: (a) => <Badge tone="info">{roleNameById(a.roleId)}</Badge>,
-            },
-            {
-              key: 'active',
-              header: 'Status',
-              sortable: true,
-              sortType: 'number',
-              sortValue: (a) => (a.active ? 1 : 0),
-              render: (a) => (
-                <Badge tone={a.active ? 'success' : 'default'}>{a.active ? 'Active' : 'Inactive'}</Badge>
-              ),
-            },
-            {
-              key: 'actions',
-              header: 'Actions',
-              render: (a) => (
-                <div className="flex flex-wrap gap-1">
-                  <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => setAccountView(a)}>
-                    <Eye className="h-3.5 w-3.5" aria-hidden />
-                    View
-                  </Button>
-                  <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openAccountEdit(a)}>
-                    <Pencil className="h-3.5 w-3.5" aria-hidden />
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    className="!px-2 !py-1.5 !text-xs text-red-700 hover:bg-red-50"
-                    onClick={() => setAccountDeleteTarget(a)}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" aria-hidden />
-                    Delete
-                  </Button>
-                </div>
-              ),
-            },
-          ]}
-          rows={accounts}
-          getRowKey={(a) => a.id}
-          pageSize={10}
-          emptyMessage="No admin accounts yet. Create one to assign a user to a role."
-        />
-      </div>
-
-      <div className="space-y-3">
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-[var(--color-heading)]">Permission matrix</h2>
-            <p className="mt-0.5 text-xs text-[var(--color-text-muted)]">
-              Rows are roles; columns are modules. Full includes create/update/delete where applicable.
-            </p>
-          </div>
+      ) : (
+        <div className="space-y-3">
+          <DataTable
+            columns={[
+              {
+                key: 'name',
+                header: 'Name',
+                sortable: true,
+                sortType: 'string',
+                render: (a) => <span className="font-medium text-[var(--color-heading)]">{a.name}</span>,
+              },
+              {
+                key: 'email',
+                header: 'Email',
+                sortable: true,
+                sortType: 'string',
+                render: (a) => <span className="text-sm text-[var(--color-text)]">{a.email}</span>,
+              },
+              {
+                key: 'roleId',
+                header: 'Role',
+                sortable: true,
+                sortType: 'string',
+                sortValue: (a) => roleNameById(a.roleId),
+                render: (a) => <Badge tone="info">{roleNameById(a.roleId)}</Badge>,
+              },
+              {
+                key: 'active',
+                header: 'Status',
+                sortable: true,
+                sortType: 'number',
+                sortValue: (a) => (a.active ? 1 : 0),
+                render: (a) => (
+                  <Badge tone={a.active ? 'success' : 'default'}>{a.active ? 'Active' : 'Inactive'}</Badge>
+                ),
+              },
+              {
+                key: 'actions',
+                header: 'Actions',
+                render: (a) => (
+                  <div className="flex flex-wrap gap-1">
+                    <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => setAccountView(a)}>
+                      <Eye className="h-3.5 w-3.5" aria-hidden />
+                      View
+                    </Button>
+                    <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openAccountEdit(a)}>
+                      <Pencil className="h-3.5 w-3.5" aria-hidden />
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="!px-2 !py-1.5 !text-xs"
+                      onClick={() => openAccountPermissions(a)}
+                    >
+                      Permissions
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      className="!px-2 !py-1.5 !text-xs text-red-700 hover:bg-red-50"
+                      onClick={() => setAccountDeleteTarget(a)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" aria-hidden />
+                      Delete
+                    </Button>
+                  </div>
+                ),
+              },
+            ]}
+            rows={accounts}
+            getRowKey={(a) => a.id}
+            pageSize={10}
+            emptyMessage="No admin accounts yet. Create one to assign a user to a role."
+          />
         </div>
-
-        <div className="overflow-x-auto rounded-[var(--radius-lg)] border border-[var(--color-border)] bg-[var(--color-surface)] shadow-[var(--shadow-sm)]">
-          <table className="w-full min-w-[720px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg)]">
-                <th className="sticky left-0 z-10 min-w-[140px] bg-[var(--color-bg)] px-3 py-3 font-semibold text-[var(--color-heading)]">
-                  Role
-                </th>
-                {modules.map((m) => (
-                  <th
-                    key={m.id}
-                    className="min-w-[100px] px-2 py-3 text-center text-xs font-semibold leading-tight text-[var(--color-heading)]"
-                    title={m.description}
-                  >
-                    {m.label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {roles.map((role) => (
-                <tr key={role.id} className="border-b border-[var(--color-border)] last:border-0">
-                  <td className="sticky left-0 z-10 bg-[var(--color-surface)] px-3 py-2.5 text-xs font-medium text-[var(--color-heading)]">
-                    {role.name}
-                  </td>
-                  {modules.map((m) => {
-                    const level = matrix[role.id]?.[m.id] ?? 'none'
-                    const label = permissionLabel(level)
-                    return (
-                      <td key={m.id} className="px-1 py-2 text-center">
-                        <Badge tone={levelTone(level)} className="!text-[10px]">
-                          {label}
-                        </Badge>
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      )}
+      {loading ? <p className="text-xs text-[var(--color-text-muted)]">Loading...</p> : null}
 
       {viewRole ? (
         <ModalBackdrop wide title={viewRole.name} onClose={() => setViewRole(null)}>
@@ -510,10 +584,6 @@ export function RolesPermissionsPage() {
                 placeholder="What this role is for…"
               />
             </div>
-            <p className="text-xs text-[var(--color-text-muted)]">
-              User count for this role is managed under <strong className="text-[var(--color-heading)]">Admin accounts</strong>{' '}
-              (create or move accounts to this role).
-            </p>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--color-heading)]">
               <input
                 type="checkbox"
@@ -523,34 +593,6 @@ export function RolesPermissionsPage() {
               />
               Active
             </label>
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-                Permissions by module
-              </p>
-              <div className="max-h-[min(40vh,360px)] space-y-2 overflow-y-auto rounded-xl border border-[#0A1628]/10 bg-[var(--color-bg)] p-3">
-                {modules.map((m) => (
-                  <div key={m.id} className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-                    <span className="min-w-0 flex-1 text-sm font-medium text-[var(--color-heading)]">{m.label}</span>
-                    <div className="min-w-[140px]">
-                      <Select
-                        label=""
-                        value={formLevels[m.id] ?? 'none'}
-                        onChange={(e) =>
-                          setFormLevels((prev) => ({ ...prev, [m.id]: e.target.value }))
-                        }
-                        aria-label={`Permission for ${m.label}`}
-                      >
-                        {LEVEL_OPTIONS.map((opt) => (
-                          <option key={opt.value} value={opt.value}>
-                            {opt.label}
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
             <div className="flex flex-wrap justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
               <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
                 Cancel
@@ -612,7 +654,7 @@ export function RolesPermissionsPage() {
               </div>
             </div>
             <p className="text-xs text-[var(--color-text-muted)]">
-              Passwords are managed by your identity provider (demo: not stored in the browser).
+              Passwords are managed by backend auth.
             </p>
             <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
               <Button type="button" variant="secondary" onClick={() => setAccountView(null)}>
@@ -659,13 +701,8 @@ export function RolesPermissionsPage() {
                 checked={accActive}
                 onChange={(e) => setAccActive(e.target.checked)}
               />
-              Active (can sign in)
+              Authorized(can sign in)
             </label>
-            {!accountEditingId ? (
-              <p className="text-xs text-[var(--color-text-muted)]">
-                An invite or temporary password would be sent by email in production (not simulated here).
-              </p>
-            ) : null}
             <div className="flex flex-wrap justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
               <Button type="button" variant="secondary" onClick={() => setAccountFormOpen(false)}>
                 Cancel
@@ -673,6 +710,101 @@ export function RolesPermissionsPage() {
               <Button type="submit">{accountEditingId ? 'Save account' : 'Create account'}</Button>
             </div>
           </form>
+        </ModalBackdrop>
+      ) : null}
+
+      {accountPermissionsView ? (
+        <ModalBackdrop
+          wide
+          title={`Permissions · ${accountPermissionsView.name}`}
+          onClose={() => setAccountPermissionsView(null)}
+        >
+          <div className="space-y-4">
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Role: <span className="font-semibold text-[var(--color-heading)]">{roleNameById(accountPermissionsView.roleId)}</span>
+            </p>
+            {roleNameById(accountPermissionsView.roleId).trim().toLowerCase() === 'super admin' ? (
+              <div className="flex justify-end">
+                <Button type="button" variant="secondary" onClick={enableAllPermissions}>
+                  Check all permissions
+                </Button>
+              </div>
+            ) : null}
+            <div className="overflow-x-auto rounded-xl border border-[#0A1628]/10">
+              <table className="w-full min-w-[760px] border-collapse text-sm">
+                <thead>
+                  <tr className="border-b border-[#0A1628]/10 bg-[var(--color-bg)]">
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Sidebar link</th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Create</th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Read</th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Update</th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Delete</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {permissionPopupModules.map((m) => {
+                    const access = accountPermissionDraft[m.id] ?? {
+                      create: false,
+                      read: false,
+                      update: false,
+                      delete: false,
+                    }
+                    return (
+                      <tr key={m.id} className="border-b border-[#0A1628]/10 last:border-0">
+                        <td className="px-3 py-2.5 text-[var(--color-heading)]">
+                          <p className="font-medium">{m.label}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">{m.description}</p>
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                            checked={access.create}
+                            onChange={(e) => toggleAccountCrud(m.id, 'create', e.target.checked)}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                            checked={access.read}
+                            onChange={(e) => toggleAccountCrud(m.id, 'read', e.target.checked)}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                            checked={access.update}
+                            onChange={(e) => toggleAccountCrud(m.id, 'update', e.target.checked)}
+                          />
+                        </td>
+                        <td className="px-3 py-2.5">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                            checked={access.delete}
+                            onChange={(e) => toggleAccountCrud(m.id, 'delete', e.target.checked)}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Saving here updates the selected role permissions for all admins mapped to that role.
+            </p>
+            <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
+              <Button type="button" variant="secondary" onClick={() => setAccountPermissionsView(null)}>
+                Close
+              </Button>
+              <Button type="button" onClick={saveAccountPermissions}>
+                Save permissions
+              </Button>
+            </div>
+          </div>
         </ModalBackdrop>
       ) : null}
 

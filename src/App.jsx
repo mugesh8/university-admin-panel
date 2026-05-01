@@ -3,6 +3,7 @@ import { AppShell } from './components/layout/AppShell.jsx'
 import { AuthProvider } from './features/auth/AuthContext.jsx'
 import { useAuth } from './features/auth/useAuth.js'
 import { LoginPage } from './features/auth/LoginPage.jsx'
+import { SuperAdminSignupPage } from './features/auth/SuperAdminSignupPage.jsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.jsx'
 import { ApplicationDetailPage } from './features/applications/ApplicationDetailPage.jsx'
 import { ApplicationsLayout } from './features/applications/ApplicationsLayout.jsx'
@@ -20,6 +21,7 @@ import { CommunicationsLayout } from './features/communications/CommunicationsLa
 import { ComposeEmailPage } from './features/communications/ComposeEmailPage.jsx'
 import { EmailTemplatesPage } from './features/communications/EmailTemplatesPage.jsx'
 import { DashboardPage } from './features/dashboard/DashboardPage.jsx'
+import { FaqCategoriesPage } from './features/faq/FaqCategoriesPage.jsx'
 import { FaqPage } from './features/faq/FaqPage.jsx'
 import { ReportsPage } from './features/reporting/ReportsPage.jsx'
 import { SupportTicketsPage } from './features/support/SupportTicketsPage.jsx'
@@ -38,10 +40,17 @@ function LoginGate() {
   return <LoginPage />
 }
 
+function SuperAdminSignupGate() {
+  const { isAuthenticated } = useAuth()
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  return <SuperAdminSignupPage />
+}
+
 function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginGate />} />
+      <Route path="/superadmin/signup" element={<SuperAdminSignupGate />} />
       <Route
         path="/"
         element={
@@ -80,6 +89,7 @@ function AppRoutes() {
         <Route path="reports" element={<ReportsPage />} />
         <Route path="announcements" element={<AnnouncementsPage />} />
         <Route path="faq" element={<FaqPage />} />
+        <Route path="faq/categories" element={<FaqCategoriesPage />} />
         <Route path="support-tickets" element={<SupportTicketsPage />} />
         <Route path="roles-permissions" element={<RolesPermissionsPage />} />
       </Route>

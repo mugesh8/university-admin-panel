@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Download, Mail, Plus } from 'lucide-react'
 import { FilterBar } from '../../components/ui/FilterBar.jsx'
@@ -8,15 +8,19 @@ import { Button } from '../../components/ui/Button.jsx'
 import { DataTable } from '../../components/ui/DataTable.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
 import { useApplications } from '../../lib/mock-data/applications.js'
-import {
-  APPLICATION_PIPELINE_STAGES,
-  getCurrentPipelineStage,
-} from '../../lib/application-pipeline/applicationPipeline.js'
+import { APPLICATION_PIPELINE_STAGES } from '../../lib/application-pipeline/applicationPipeline.js'
 import { exportApplicationsToCsv } from './exportApplicationsCsv.js'
+import { fetchApplicationByRowId, listApplications } from '../../lib/api/applicationsApi.js'
+import { useAuth } from '../auth/useAuth.js'
 
 export function ApplicationsTablePanel({ showExportExcel = false }) {
   const navigate = useNavigate()
-  const allApplications = useApplications()
+  const { token } = useAuth()
+  const mockApplications = useApplications()
+  const applicationsPrefixRef = useRef(import.meta.env.VITE_APPLICATIONS_PREFIX || '/api/v1/applications')
+  const [allApplications, setAllApplications] = useState(mockApplications)
+  const [loadError, setLoadError] = useState('')
+  const [loading, setLoading] = useState(false)
   const [search, setSearch] = useState('')
   const [statusFilters, setStatusFilters] = useState([])
   const [countryFilters, setCountryFilters] = useState([])
@@ -26,7 +30,92 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
   const hasActiveFilters =
     search.trim() !== '' || statusFilters.length > 0 || countryFilters.length > 0
 
-  const getRowStatus = (application) => getCurrentPipelineStage(application).displayName
+  function getRowStatus(application) {
+    return application.status || 'Draft'
+  }
+
+  function normalizeBackendStatus(row) {
+    const raw = String(row?.current_status || '').trim().toLowerCase()
+    if (!raw) return 'Draft'
+    if (raw === 'draft') {
+      const completed = Number(row?.completed_steps || 0)
+      return completed > 0 ? 'Partial Draft' : 'Draft'
+    }
+    return raw
+      .split(/[_\s-]+/)
+      .filter(Boolean)
+      .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+      .join(' ')
+  }
+
+  function mapBackendApplicationRow(row) {
+    const personal = Array.isArray(row?.personal_details) ? row.personal_details[0] : row?.personal_details
+    const admission = Array.isArray(row?.admission_sought) ? row.admission_sought[0] : row?.admission_sought
+    const firstName = personal?.first_name || ''
+    const surname = personal?.surname || ''
+    const fullName = `${firstName} ${surname}`.trim() || row?.application_id || 'Applicant'
+    return {
+      id: String(row?.application_id || row?.id || ''),
+      name: fullName,
+      citizenship: personal?.nationality_citizenship || '-',
+      status: normalizeBackendStatus(row),
+      submittedAt: row?.submitted_at ? String(row.submitted_at).slice(0, 10) : '-',
+      assignedOfficer: '-',
+      daysInStage: 0,
+      program: admission?.program_type || '-',
+      intake: admission?.preferred_semester || '-',
+      country: personal?.country_of_residence || '-',
+      phone: personal?.mobile_phone || '',
+      email: personal?.email || '',
+      referredBy: row?.lead_source || '-',
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadFromApi() {
+      setLoading(true)
+      setLoadError('')
+      try {
+        const response = await listApplications({
+          token,
+          preferredPrefix: applicationsPrefixRef.current,
+          page: 1,
+          limit: 100,
+        })
+        applicationsPrefixRef.current = response.preferredPrefix
+        if (cancelled) return
+        const enriched = await Promise.all(
+          response.data.map(async (row) => {
+            if (!row?.id) return row
+            try {
+              const detail = await fetchApplicationByRowId(row.id, {
+                token,
+                preferredPrefix: applicationsPrefixRef.current,
+                full: true,
+              })
+              applicationsPrefixRef.current = detail.preferredPrefix
+              return detail.application || row
+            } catch {
+              return row
+            }
+          }),
+        )
+        const mapped = enriched.map(mapBackendApplicationRow)
+        setAllApplications(mapped)
+      } catch (error) {
+        if (cancelled) return
+        setLoadError(error?.message || 'Failed to load applications from server.')
+        setAllApplications(mockApplications)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    loadFromApi()
+    return () => {
+      cancelled = true
+    }
+  }, [token, mockApplications])
 
   const rows = useMemo(() => {
     let list = [...allApplications]
@@ -49,7 +138,7 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
       )
     }
     return list
-  }, [search, statusFilters, countryFilters])
+  }, [allApplications, search, statusFilters, countryFilters])
 
   function removeFilters() {
     setSearch('')
@@ -57,7 +146,7 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
     setCountryFilters([])
   }
 
-  const statuses = APPLICATION_PIPELINE_STAGES.map((s) => s.displayName)
+  const statuses = [...new Set([...APPLICATION_PIPELINE_STAGES.map((s) => s.displayName), ...allApplications.map((a) => getRowStatus(a))])]
   const countries = [...new Set(allApplications.map((a) => a.country))].sort((a, b) =>
     a.localeCompare(b),
   )
@@ -96,6 +185,11 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
 
   return (
     <>
+      {loadError ? (
+        <div className="mb-3 rounded-[var(--radius-md)] border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {loadError}
+        </div>
+      ) : null}
       {showExportExcel ? (
         <div className="mb-4 flex justify-end">
           <Button
@@ -172,6 +266,7 @@ export function ApplicationsTablePanel({ showExportExcel = false }) {
         selectedKeys={selected}
         onSelectionChange={setSelected}
       />
+      {loading ? <p className="mt-2 text-xs text-[var(--color-text-muted)]">Loading applications...</p> : null}
     </>
   )
 }

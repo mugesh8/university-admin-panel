@@ -1,4 +1,14 @@
 function matchCondition(condition, values) {
+  if (!condition || typeof condition !== 'object') {
+    return true
+  }
+  if (Array.isArray(condition.and)) {
+    return condition.and.every((c) => matchCondition(c, values))
+  }
+  if (Array.isArray(condition.or)) {
+    return condition.or.some((c) => matchCondition(c, values))
+  }
+
   const value = values[condition.field]
   if (condition.equals !== undefined) {
     return value === condition.equals
@@ -19,11 +29,7 @@ export function isFieldVisible(field, values) {
   if (!field.showWhen) {
     return true
   }
-  const { showWhen: w } = field
-  if (w.or) {
-    return w.or.some((c) => matchCondition(c, values))
-  }
-  return matchCondition(w, values)
+  return matchCondition(field.showWhen, values)
 }
 
 export function normalizeSelectOptions(options) {

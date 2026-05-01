@@ -90,7 +90,8 @@ function getNoteFieldForForm(group) {
   const hasMore =
     stripped.noteBadge ||
     stripped.noteCallout ||
-    (stripped.reviewBullets && stripped.reviewBullets.length > 0)
+    (stripped.reviewBullets && stripped.reviewBullets.length > 0) ||
+    Boolean(stripped.downloadLink)
   return hasMore ? stripped : null
 }
 
@@ -125,6 +126,7 @@ function StepGroupPanel({
             error={errors[group.noteField.name]}
             onChange={onChange}
             onUploadActivityChange={onUploadActivityChange}
+            allValues={values}
           />
         </div>
       ) : null}
@@ -152,6 +154,7 @@ function StepGroupPanel({
                   error={errors[field.name]}
                   onChange={onChange}
                   onUploadActivityChange={onUploadActivityChange}
+                  allValues={values}
                 />
               </div>
             )
@@ -200,6 +203,12 @@ function StepForm({
   useEffect(() => {
     setUploadActivityCount(0)
   }, [step.id])
+
+  useEffect(() => {
+    if (values.programType === '4year' && values.subProgram === 'premedical') {
+      onChange('subProgram', '')
+    }
+  }, [values.programType, values.subProgram, onChange])
 
   const fileFieldStats = useMemo(() => {
     const fileFields = step.fields.filter(
@@ -652,6 +661,7 @@ function StepForm({
                         error={errors[group.noteField.name]}
                         onChange={onChange}
                         onUploadActivityChange={reportUploadActivity}
+                        allValues={values}
                       />
                     </div>
                   ) : null}
@@ -678,6 +688,7 @@ function StepForm({
                             error={errors[field.name]}
                             onChange={onChange}
                             onUploadActivityChange={reportUploadActivity}
+                            allValues={values}
                           />
                         </div>
                       ))}

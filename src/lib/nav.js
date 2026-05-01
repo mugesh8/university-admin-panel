@@ -44,6 +44,7 @@ export const routeTitles = {
   '/reports': 'Reports',
   '/announcements': 'Announcements',
   '/faq': 'FAQ management',
+  '/faq/categories': 'FAQ categories',
   '/support-tickets': 'Support tickets',
   '/roles-permissions': 'Roles & permissions',
 }

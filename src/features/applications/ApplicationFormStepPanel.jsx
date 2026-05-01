@@ -93,7 +93,7 @@ function FieldReadOnlyRow({ field, formValues }) {
                 </p>
                 <div className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
                   {(field.itemFields ?? []).map((sub) => (
-                    <p key={`${field.name}-${rowIndex}-${sub.name}`} className="text-xs text-[#0A1628]/72">
+                    <p key={`${field.name}-${rowIndex}-${sub.name}`} className="break-words text-xs text-[#0A1628]/72">
                       <span className="font-semibold text-[#0A1628]/82">
                         {String(sub.label ?? sub.name).toUpperCase()}:
                       </span>{' '}
@@ -113,7 +113,7 @@ function FieldReadOnlyRow({ field, formValues }) {
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0A1628]/45">
               {field.label}
             </p>
-            <p className="mt-1 whitespace-pre-wrap text-sm text-[#0A1628]/78">
+            <p className="mt-1 whitespace-pre-wrap break-words text-sm text-[#0A1628]/78">
               {getSingleFieldDisplayValue(field, formValues[field.name])}
             </p>
           </div>
@@ -134,7 +134,7 @@ function FieldReadOnlyRow({ field, formValues }) {
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#0A1628]/45">
             {field.label}
           </p>
-          <p className="whitespace-pre-wrap text-sm text-[#0A1628]/78">
+          <p className="min-w-0 whitespace-pre-wrap break-all text-sm text-[#0A1628]/78">
             {getSingleFieldDisplayValue(field, formValues[field.name])}
           </p>
         </div>
