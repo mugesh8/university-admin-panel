@@ -33,6 +33,7 @@ export const programsConfig = [
   export const intakesConfig = [
     {
       id: 'i1',
+      program_id: '',
       name: 'Fall 2026',
       startDate: '2026-09-01',
       applicationDeadline: '2026-08-15',
@@ -41,6 +42,7 @@ export const programsConfig = [
     },
     {
       id: 'i2',
+      program_id: '',
       name: 'Spring 2027',
       startDate: '2027-01-15',
       applicationDeadline: '2026-12-01',
@@ -49,6 +51,7 @@ export const programsConfig = [
     },
     {
       id: 'i3',
+      program_id: '',
       name: 'Summer 2026',
       startDate: '2026-05-01',
       applicationDeadline: '2026-04-01',

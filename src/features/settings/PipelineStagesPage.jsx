@@ -9,7 +9,7 @@ import { SettingsModalBackdrop } from '../../components/settings/SettingsModal.j
 import { useSettingsStore } from '../../hooks/useSettingsStore.js'
 
 export function PipelineStagesPage() {
-  const { pipelineStages, setSettingsState } = useSettingsStore()
+  const { pipelineStages, savePipelineStage, removePipelineStage, saving, loading } = useSettingsStore()
 
   const [viewRow, setViewRow] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -47,7 +47,7 @@ export function PipelineStagesPage() {
     setFormOpen(true)
   }
 
-  function saveForm(e) {
+  async function saveForm(e) {
     e.preventDefault()
     const dn = displayName.trim()
     const sk = stageKey.trim()
@@ -65,29 +65,26 @@ export function PipelineStagesPage() {
       notificationTemplate: notificationTemplate.trim() || '—',
       active,
     }
-    if (editingId) {
-      setSettingsState((s) => ({
-        ...s,
-        pipelineStages: s.pipelineStages.map((x) => (x.id === editingId ? { ...x, ...row } : x)),
-      }))
-    } else {
-      setSettingsState((s) => ({
-        ...s,
-        pipelineStages: [...s.pipelineStages, { id: `s_${Date.now()}`, ...row }],
-      }))
+    try {
+      await savePipelineStage(editingId, row)
+      setFormOpen(false)
+    } catch {
+      /* layout */
     }
-    setFormOpen(false)
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return
-    setSettingsState((s) => ({
-      ...s,
-      pipelineStages: s.pipelineStages.filter((x) => x.id !== deleteTarget.id),
-    }))
-    if (viewRow?.id === deleteTarget.id) setViewRow(null)
-    setDeleteTarget(null)
+    try {
+      await removePipelineStage(deleteTarget.id)
+      if (viewRow?.id === deleteTarget.id) setViewRow(null)
+      setDeleteTarget(null)
+    } catch {
+      /* layout */
+    }
   }
+
+  const busy = saving || loading
 
   const columns = [
     { key: 'order', header: 'Order', sortable: true, sortType: 'number', numeric: true },
@@ -121,11 +118,11 @@ export function PipelineStagesPage() {
       sortable: false,
       render: (r) => (
         <div className="flex flex-wrap gap-1">
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => setViewRow(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => setViewRow(r)}>
             <Eye className="h-3.5 w-3.5" aria-hidden />
             View
           </Button>
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openEdit(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => openEdit(r)}>
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Edit
           </Button>
@@ -133,6 +130,7 @@ export function PipelineStagesPage() {
             type="button"
             variant="ghost"
             className="!px-2 !py-1.5 !text-xs text-red-700 hover:bg-red-50"
+            disabled={busy}
             onClick={() => setDeleteTarget(r)}
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -147,7 +145,7 @@ export function PipelineStagesPage() {
     <div className="space-y-6">
       <PageHeader
         actions={
-          <Button type="button" variant="secondary" onClick={openAdd}>
+          <Button type="button" variant="secondary" onClick={openAdd} disabled={busy}>
             <Plus className="h-4 w-4" aria-hidden />
             Add stage
           </Button>
@@ -191,6 +189,7 @@ export function PipelineStagesPage() {
             </Button>
             <Button
               type="button"
+              disabled={busy}
               onClick={() => {
                 const r = viewRow
                 setViewRow(null)
@@ -243,10 +242,12 @@ export function PipelineStagesPage() {
               Active
             </label>
             <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
-              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
+              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button type="submit">{editingId ? 'Save' : 'Add'}</Button>
+              <Button type="submit" disabled={saving}>
+                {editingId ? 'Save' : 'Add'}
+              </Button>
             </div>
           </form>
         </SettingsModalBackdrop>
@@ -259,10 +260,10 @@ export function PipelineStagesPage() {
             cannot be undone.
           </p>
           <div className="mt-6 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
+            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={confirmDelete}>
+            <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
               Delete
             </Button>
           </div>

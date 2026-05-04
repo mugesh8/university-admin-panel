@@ -46,6 +46,7 @@ export const routeTitles = {
   '/faq': 'FAQ management',
   '/faq/categories': 'FAQ categories',
   '/support-tickets': 'Support tickets',
+  '/support-tickets/categories': 'Support ticket categories',
   '/roles-permissions': 'Roles & permissions',
 }
 

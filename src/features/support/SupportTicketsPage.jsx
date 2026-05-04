@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { Eye, MessageSquare, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { Card } from '../../components/ui/Card.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
 import { Button } from '../../components/ui/Button.jsx'
@@ -8,8 +9,9 @@ import { FilterBar } from '../../components/ui/FilterBar.jsx'
 import { Input } from '../../components/ui/Input.jsx'
 import { Select } from '../../components/ui/Select.jsx'
 import { useSupportTicketsStore } from '../../hooks/useSupportTicketsStore.js'
+import { useSupportTicketCategoriesStore } from '../../hooks/useSupportTicketCategoriesStore.js'
+import { sendSupportTicketReplyEmail } from '../../lib/api/supportTicketsApi.js'
 
-const CATEGORY_OPTIONS = ['Documents', 'Fees', 'Admissions', 'Technical', 'Other']
 const STATUS_OPTIONS = [
   { value: 'open', label: 'Open' },
   { value: 'pending', label: 'Pending' },
@@ -26,10 +28,6 @@ function statusTone(s) {
   return 'default'
 }
 
-function todayYmd() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function formatWhen(iso) {
   if (!iso) return ''
   try {
@@ -37,6 +35,12 @@ function formatWhen(iso) {
   } catch {
     return iso
   }
+}
+
+function statusLabel(status) {
+  if (status === 'resolved') return 'Resolved'
+  if (status === 'pending') return 'Pending'
+  return 'Open'
 }
 
 function ModalBackdrop({ children, onClose, title, wide }) {
@@ -77,7 +81,9 @@ function ModalBackdrop({ children, onClose, title, wide }) {
 }
 
 export function SupportTicketsPage() {
-  const { tickets, setTickets } = useSupportTicketsStore()
+  const navigate = useNavigate()
+  const { tickets, loading, saving, error, refreshTickets, applyTicketPatch, removeTicket } = useSupportTicketsStore()
+  const { supportTicketCategories } = useSupportTicketCategoriesStore()
 
   const [search, setSearch] = useState('')
   const [filterStatus, setFilterStatus] = useState('')
@@ -85,20 +91,21 @@ export function SupportTicketsPage() {
 
   const [detailId, setDetailId] = useState(null)
   const [replyDraft, setReplyDraft] = useState('')
-
-  const [formOpen, setFormOpen] = useState(false)
-  const [editingId, setEditingId] = useState(null)
+  const [replySending, setReplySending] = useState(false)
+  const [replyError, setReplyError] = useState('')
+  const [replyNotice, setReplyNotice] = useState('')
+  const [editTarget, setEditTarget] = useState(null)
+  const [editStatus, setEditStatus] = useState('open')
   const [deleteTarget, setDeleteTarget] = useState(null)
 
-  const [formApplicant, setFormApplicant] = useState('')
-  const [formCategory, setFormCategory] = useState('Documents')
-  const [formSubject, setFormSubject] = useState('')
-  const [formStatus, setFormStatus] = useState('open')
-
   const categories = useMemo(() => {
+    const supportCategoryNames = supportTicketCategories
+      .filter((category) => category.active)
+      .map((category) => category.name)
+      .filter(Boolean)
     const fromData = [...new Set(tickets.map((t) => t.category))].filter(Boolean)
-    return [...new Set([...CATEGORY_OPTIONS, ...fromData])].sort()
-  }, [tickets])
+    return [...new Set([...supportCategoryNames, ...fromData])].sort()
+  }, [supportTicketCategories, tickets])
 
   const detailTicket = useMemo(() => tickets.find((t) => t.id === detailId) ?? null, [tickets, detailId])
 
@@ -112,7 +119,7 @@ export function SupportTicketsPage() {
         (t) =>
           t.id.toLowerCase().includes(q) ||
           t.subject.toLowerCase().includes(q) ||
-          t.applicant.toLowerCase().includes(q) ||
+          String(t.applicantEmail || '').toLowerCase().includes(q) ||
           t.category.toLowerCase().includes(q),
       )
     }
@@ -122,104 +129,81 @@ export function SupportTicketsPage() {
   function openDetail(id) {
     setDetailId(id)
     setReplyDraft('')
+    setReplyError('')
+    setReplyNotice('')
   }
 
   function closeDetail() {
     setDetailId(null)
     setReplyDraft('')
+    setReplyError('')
+    setReplyNotice('')
   }
 
-  function sendReply(e) {
+  function openEdit(ticket) {
+    setEditTarget(ticket)
+    setEditStatus(ticket.status || 'open')
+  }
+
+  async function saveEditStatus(event) {
+    event.preventDefault()
+    if (!editTarget) return
+    const statusValue = editStatus === 'resolved' ? 'Resolved' : editStatus === 'pending' ? 'In progress' : 'Open'
+    try {
+      await applyTicketPatch(editTarget.id, { status: statusValue })
+      setEditTarget(null)
+    } catch {
+      // error is shown from store state
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    try {
+      await removeTicket(deleteTarget.id)
+    } catch {
+      return
+    }
+    if (detailId === deleteTarget.id) closeDetail()
+    if (editTarget?.id === deleteTarget.id) setEditTarget(null)
+    setDeleteTarget(null)
+  }
+
+  async function sendReply(e) {
     e.preventDefault()
     if (!detailTicket || !replyDraft.trim()) return
+    const recipientEmail = String(detailTicket.applicantEmail || '').trim()
+    if (!recipientEmail) {
+      setReplyError('Applicant email is missing for this ticket.')
+      return
+    }
+
     const body = replyDraft.trim()
-    const msg = {
-      id: `m-${Date.now()}`,
-      body,
-      sentAt: new Date().toISOString(),
-      from: 'admin',
+    setReplySending(true)
+    setReplyError('')
+    setReplyNotice('')
+    try {
+      await sendSupportTicketReplyEmail({
+        ticketId: detailTicket.id,
+        body,
+      })
+      await refreshTickets()
+      setReplyDraft('')
+      setReplyNotice(`Reply emailed to ${recipientEmail}.`)
+    } catch (error) {
+      setReplyError(error instanceof Error ? error.message : 'Failed to send reply email.')
+    } finally {
+      setReplySending(false)
     }
-    setTickets((prev) =>
-      prev.map((t) =>
-        t.id === detailTicket.id
-          ? { ...t, messages: [...(t.messages ?? []), msg], updated: todayYmd() }
-          : t,
-      ),
-    )
-    setReplyDraft('')
-  }
-
-  function openAdd() {
-    setEditingId(null)
-    setFormApplicant('')
-    setFormCategory('Documents')
-    setFormSubject('')
-    setFormStatus('open')
-    setFormOpen(true)
-  }
-
-  function openEdit(t) {
-    setEditingId(t.id)
-    setFormApplicant(t.applicant)
-    setFormCategory(t.category)
-    setFormSubject(t.subject)
-    setFormStatus(t.status)
-    setFormOpen(true)
-  }
-
-  function saveForm(e) {
-    e.preventDefault()
-    const applicant = formApplicant.trim()
-    const subject = formSubject.trim()
-    if (!applicant || !subject) return
-
-    if (editingId) {
-      setTickets((prev) =>
-        prev.map((t) =>
-          t.id === editingId
-            ? {
-                ...t,
-                applicant,
-                category: formCategory || 'Other',
-                subject,
-                status: formStatus,
-                updated: todayYmd(),
-              }
-            : t,
-        ),
-      )
-    } else {
-      const id = `tk-${Date.now()}`
-      setTickets((prev) => [
-        ...prev,
-        {
-          id,
-          applicant,
-          category: formCategory || 'Other',
-          subject,
-          status: formStatus,
-          updated: todayYmd(),
-          messages: [],
-        },
-      ])
-    }
-    setFormOpen(false)
-  }
-
-  function confirmDelete() {
-    if (!deleteTarget) return
-    setTickets((prev) => prev.filter((t) => t.id !== deleteTarget.id))
-    if (detailId === deleteTarget.id) closeDetail()
-    setDeleteTarget(null)
   }
 
   return (
     <div>
       <PageHeader
         actions={
-          <Button type="button" onClick={openAdd}>
+          <Button type="button" onClick={() => navigate('/support-tickets/categories')}>
             <Plus className="h-4 w-4" aria-hidden />
-            New ticket
+            Add support ticket category
           </Button>
         }
       />
@@ -256,7 +240,9 @@ export function SupportTicketsPage() {
       </FilterBar>
 
       <div className="space-y-3">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <Card className="py-10 text-center text-sm text-[var(--color-text-muted)]">Loading tickets...</Card>
+        ) : filtered.length === 0 ? (
           <Card className="py-10 text-center text-sm text-[var(--color-text-muted)]">
             No tickets match your filters.
           </Card>
@@ -267,11 +253,11 @@ export function SupportTicketsPage() {
                 <p className="font-mono text-xs text-[var(--color-text-muted)]">{t.id}</p>
                 <h3 className="font-semibold text-[var(--color-heading)]">{t.subject}</h3>
                 <p className="text-sm text-[var(--color-text-muted)]">
-                  {t.applicant} · {t.category} · Updated {t.updated}
+                  {t.applicantEmail} · {t.category} · Updated {formatWhen(t.updatedAt)}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge tone={statusTone(t.status)}>{t.status}</Badge>
+                <Badge tone={statusTone(t.status)}>{statusLabel(t.status)}</Badge>
                 <Button type="button" variant="ghost" className="!py-1.5 text-xs" onClick={() => openDetail(t.id)}>
                   <Eye className="h-3.5 w-3.5" aria-hidden />
                   View
@@ -298,6 +284,7 @@ export function SupportTicketsPage() {
           ))
         )}
       </div>
+      {error ? <p className="mt-3 text-sm text-red-700">{error}</p> : null}
 
       {detailTicket ? (
         <ModalBackdrop wide title={`Ticket ${detailTicket.id}`} onClose={closeDetail}>
@@ -305,11 +292,11 @@ export function SupportTicketsPage() {
             <div>
               <h3 className="text-base font-semibold text-[var(--color-heading)]">{detailTicket.subject}</h3>
               <p className="mt-1 text-sm text-[var(--color-text-muted)]">
-                {detailTicket.applicant} · {detailTicket.category}
+                {detailTicket.applicantEmail} · {detailTicket.category}
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
-                <Badge tone={statusTone(detailTicket.status)}>{detailTicket.status}</Badge>
-                <span className="text-xs text-[var(--color-text-muted)]">Last updated {detailTicket.updated}</span>
+                <Badge tone={statusTone(detailTicket.status)}>{statusLabel(detailTicket.status)}</Badge>
+                <span className="text-xs text-[var(--color-text-muted)]">Last updated {formatWhen(detailTicket.updatedAt)}</span>
               </div>
             </div>
 
@@ -344,6 +331,9 @@ export function SupportTicketsPage() {
               <label htmlFor="reply-body" className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
                 Reply to applicant
               </label>
+              <p className="text-xs text-[var(--color-text-muted)]">
+                This reply will be emailed to <span className="font-medium text-[var(--color-heading)]">{detailTicket.applicantEmail || '—'}</span>.
+              </p>
               <textarea
                 id="reply-body"
                 className={replyTextareaClass}
@@ -351,12 +341,14 @@ export function SupportTicketsPage() {
                 onChange={(e) => setReplyDraft(e.target.value)}
                 placeholder="Type your reply…"
               />
+              {replyError ? <p className="text-xs text-red-700">{replyError}</p> : null}
+              {replyNotice ? <p className="text-xs text-emerald-700">{replyNotice}</p> : null}
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="secondary" onClick={closeDetail}>
                   Close
                 </Button>
-                <Button type="submit" disabled={!replyDraft.trim()}>
-                  Send reply
+                <Button type="submit" disabled={!replyDraft.trim() || replySending || saving}>
+                  {replySending ? 'Sending…' : 'Send reply'}
                 </Button>
               </div>
             </form>
@@ -364,36 +356,26 @@ export function SupportTicketsPage() {
         </ModalBackdrop>
       ) : null}
 
-      {formOpen ? (
-        <ModalBackdrop title={editingId ? 'Edit ticket' : 'New ticket'} onClose={() => setFormOpen(false)}>
-          <form onSubmit={saveForm} className="space-y-4">
-            <Input
-              type="email"
-              label="Applicant email"
-              value={formApplicant}
-              onChange={(e) => setFormApplicant(e.target.value)}
-              required
-            />
-            <Select label="Category" value={formCategory} onChange={(e) => setFormCategory(e.target.value)}>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
+      {editTarget ? (
+        <ModalBackdrop title={`Edit ticket ${editTarget.id}`} onClose={() => setEditTarget(null)}>
+          <form onSubmit={saveEditStatus} className="space-y-4">
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {editTarget.subject} · {editTarget.applicantEmail}
+            </p>
+            <Select label="Status" value={editStatus} onChange={(event) => setEditStatus(event.target.value)}>
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
                 </option>
               ))}
             </Select>
-            <Input label="Subject" value={formSubject} onChange={(e) => setFormSubject(e.target.value)} required />
-            <Select label="Status" value={formStatus} onChange={(e) => setFormStatus(e.target.value)}>
-              {STATUS_OPTIONS.map((s) => (
-                <option key={s.value} value={s.value}>
-                  {s.label}
-                </option>
-              ))}
-            </Select>
-            <div className="flex flex-wrap justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
-              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
+            <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
+              <Button type="button" variant="secondary" onClick={() => setEditTarget(null)}>
                 Cancel
               </Button>
-              <Button type="submit">{editingId ? 'Save changes' : 'Create ticket'}</Button>
+              <Button type="submit" disabled={saving}>
+                Save
+              </Button>
             </div>
           </form>
         </ModalBackdrop>
@@ -403,13 +385,13 @@ export function SupportTicketsPage() {
         <ModalBackdrop title="Delete ticket?" onClose={() => setDeleteTarget(null)}>
           <p className="text-sm text-[var(--color-text)]">
             Delete ticket <span className="font-mono font-semibold text-[var(--color-heading)]">{deleteTarget.id}</span>{' '}
-            ({deleteTarget.subject})? This cannot be undone.
+            ({deleteTarget.subject})? This will be deleted permanently.
           </p>
           <div className="mt-6 flex justify-end gap-2">
             <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={confirmDelete}>
+            <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
               Delete
             </Button>
           </div>

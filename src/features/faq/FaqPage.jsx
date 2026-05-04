@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Eye, Pencil, Plus, Trash2, X } from 'lucide-react'
+import { ArrowDown, ArrowUp, Eye, Pencil, Plus, Trash2, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Card } from '../../components/ui/Card.jsx'
@@ -10,9 +10,18 @@ import { Select } from '../../components/ui/Select.jsx'
 import { FilterBar } from '../../components/ui/FilterBar.jsx'
 import { useFaqItemsStore } from '../../hooks/useFaqItemsStore.js'
 import { useFaqCategoriesStore } from '../../hooks/useFaqCategoriesStore.js'
+import { sanitizeFaqHtml, stripHtml } from '../../lib/faqContent.js'
 
-const textareaClass =
-  'min-h-[160px] w-full rounded-xl border border-[#0A1628]/15 bg-white px-3 py-2.5 text-sm text-[#0A1628] placeholder:text-[#0A1628]/45 focus:border-[#D4A843]/50 focus:outline-none focus:ring-2 focus:ring-[#D4A843]/35'
+const formStepOptions = [
+  { key: 'personalDetails', label: 'Personal Details' },
+  { key: 'emergencyContact', label: 'Emergency Contact' },
+  { key: 'academicBackground', label: 'Academic Background' },
+  { key: 'experienceMotivation', label: 'Experience & Motivation' },
+  { key: 'disclosures', label: 'Disclosures' },
+  { key: 'documents', label: 'Documents' },
+  { key: 'financialSupport', label: 'Financial Support' },
+  { key: 'reviewSubmit', label: 'Review & Submit' },
+]
 
 function ModalBackdrop({ children, onClose, title, wide }) {
   return (
@@ -51,6 +60,50 @@ function ModalBackdrop({ children, onClose, title, wide }) {
   )
 }
 
+function RichTextEditor({ value, onChange }) {
+  const safeHtml = sanitizeFaqHtml(value)
+  function applyCommand(command, argument = null) {
+    document.execCommand(command, false, argument)
+  }
+
+  function handleLink() {
+    const url = window.prompt('Enter URL (https://...)')
+    if (!url) return
+    applyCommand('createLink', url.trim())
+  }
+
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" className="!py-1.5 !text-xs" onClick={() => applyCommand('bold')}>
+          Bold
+        </Button>
+        <Button type="button" variant="secondary" className="!py-1.5 !text-xs" onClick={() => applyCommand('italic')}>
+          Italic
+        </Button>
+        <Button
+          type="button"
+          variant="secondary"
+          className="!py-1.5 !text-xs"
+          onClick={() => applyCommand('insertUnorderedList')}
+        >
+          Bullet List
+        </Button>
+        <Button type="button" variant="secondary" className="!py-1.5 !text-xs" onClick={handleLink}>
+          Link
+        </Button>
+      </div>
+      <div
+        contentEditable
+        suppressContentEditableWarning
+        className="min-h-[180px] w-full rounded-xl border border-[#0A1628]/15 bg-white px-3 py-2.5 text-sm text-[#0A1628] focus:border-[#D4A843]/50 focus:outline-none focus:ring-2 focus:ring-[#D4A843]/35"
+        dangerouslySetInnerHTML={{ __html: safeHtml }}
+        onInput={(event) => onChange(event.currentTarget.innerHTML)}
+      />
+    </div>
+  )
+}
+
 export function FaqPage() {
   const navigate = useNavigate()
   const { faqItems, loading, saving, error, createFaqItem, editFaqItem, removeFaqItem } = useFaqItemsStore()
@@ -68,6 +121,7 @@ export function FaqPage() {
   const [formCategory, setFormCategory] = useState('Admissions')
   const [formQuestion, setFormQuestion] = useState('')
   const [formAnswer, setFormAnswer] = useState('')
+  const [formContextSteps, setFormContextSteps] = useState([])
   const [formActive, setFormActive] = useState(true)
   const [formError, setFormError] = useState('')
 
@@ -86,7 +140,8 @@ export function FaqPage() {
         (f) =>
           f.question.toLowerCase().includes(q) ||
           f.category.toLowerCase().includes(q) ||
-          String(f.answer || '').toLowerCase().includes(q),
+          stripHtml(f.answer || '').toLowerCase().includes(q) ||
+          (f.contextSteps || []).some((step) => String(step).toLowerCase().includes(q)),
       )
     }
     return list
@@ -97,6 +152,7 @@ export function FaqPage() {
     setFormCategory(categories[0] || '')
     setFormQuestion('')
     setFormAnswer('')
+    setFormContextSteps([])
     setFormActive(true)
     setFormError('')
     setFormOpen(true)
@@ -107,6 +163,7 @@ export function FaqPage() {
     setFormCategory(f.category)
     setFormQuestion(f.question)
     setFormAnswer(f.answer ?? '')
+    setFormContextSteps(Array.isArray(f.contextSteps) ? f.contextSteps : [])
     setFormActive(Boolean(f.active))
     setFormError('')
     setFormOpen(true)
@@ -115,7 +172,7 @@ export function FaqPage() {
   async function saveForm(e) {
     e.preventDefault()
     const question = formQuestion.trim()
-    const answer = formAnswer.trim()
+    const answer = sanitizeFaqHtml(formAnswer)
     if (!question || !answer) return
     const matchedCategory = faqCategories.find((c) => c.name === formCategory)
 
@@ -126,6 +183,7 @@ export function FaqPage() {
           category: formCategory || 'General',
           question,
           answer,
+          context_steps: formContextSteps,
           is_published: formActive,
         })
       } catch (err) {
@@ -139,6 +197,7 @@ export function FaqPage() {
           category: formCategory || 'General',
           question,
           answer,
+          context_steps: formContextSteps,
           sort_order: faqItems.length,
           is_published: formActive,
         })
@@ -159,6 +218,19 @@ export function FaqPage() {
     }
     if (previewItem?.id === deleteTarget.id) setPreviewItem(null)
     setDeleteTarget(null)
+  }
+
+  async function moveFaq(item, direction) {
+    const currentIndex = faqItems.findIndex((entry) => entry.id === item.id)
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= faqItems.length) return
+    const targetItem = faqItems[targetIndex]
+    try {
+      await editFaqItem(item.id, { sort_order: targetItem.sortOrder })
+      await editFaqItem(targetItem.id, { sort_order: item.sortOrder })
+    } catch {
+      // store already exposes error state
+    }
   }
 
   return (
@@ -219,11 +291,22 @@ export function FaqPage() {
               <div className="min-w-0 flex-1">
                 <Badge tone="info">{f.category}</Badge>
                 <h3 className="mt-2 font-semibold text-[var(--color-heading)]">{f.question}</h3>
+                {Array.isArray(f.contextSteps) && f.contextSteps.length > 0 ? (
+                  <p className="mt-1 text-xs text-[var(--color-text-muted)]">Shown on steps: {f.contextSteps.join(', ')}</p>
+                ) : null}
                 {!f.active ? (
                   <p className="mt-1 text-xs text-[var(--color-text-muted)]">Hidden from applicants</p>
                 ) : null}
               </div>
               <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" className="!py-1.5 text-xs" onClick={() => moveFaq(f, 'up')}>
+                  <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+                  Up
+                </Button>
+                <Button type="button" variant="secondary" className="!py-1.5 text-xs" onClick={() => moveFaq(f, 'down')}>
+                  <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+                  Down
+                </Button>
                 <Button type="button" variant="secondary" className="!py-1.5 text-xs" onClick={() => setPreviewItem(f)}>
                   <Eye className="h-3.5 w-3.5" aria-hidden />
                   Preview
@@ -257,9 +340,10 @@ export function FaqPage() {
             </div>
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Answer</p>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-[var(--color-text)]">
-                {previewItem.answer || '—'}
-              </p>
+              <div
+                className="mt-2 text-sm leading-relaxed text-[var(--color-text)]"
+                dangerouslySetInnerHTML={{ __html: sanitizeFaqHtml(previewItem.answer) || '—' }}
+              />
             </div>
             <div className="flex flex-wrap items-center gap-2 border-t border-[#0A1628]/10 pt-4">
               <Badge tone={previewItem.active ? 'success' : 'default'}>
@@ -300,16 +384,33 @@ export function FaqPage() {
             </Select>
             <Input label="Question" value={formQuestion} onChange={(e) => setFormQuestion(e.target.value)} required />
             <div className="w-full">
-              <label htmlFor="faq-answer" className="mb-1.5 block text-sm font-medium text-[var(--color-heading)]">
-                Answer
-              </label>
-              <textarea
-                id="faq-answer"
-                className={textareaClass}
-                value={formAnswer}
-                onChange={(e) => setFormAnswer(e.target.value)}
-                placeholder="Full answer shown to applicants."
-              />
+              <p className="mb-1.5 block text-sm font-medium text-[var(--color-heading)]">Answer</p>
+              <RichTextEditor value={formAnswer} onChange={setFormAnswer} />
+            </div>
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-[var(--color-heading)]">Show only on specific form steps (optional)</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {formStepOptions.map((option) => {
+                  const checked = formContextSteps.includes(option.key)
+                  return (
+                    <label key={option.key} className="flex cursor-pointer items-center gap-2 text-sm text-[var(--color-heading)]">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                        checked={checked}
+                        onChange={(event) => {
+                          if (event.target.checked) {
+                            setFormContextSteps((prev) => [...new Set([...prev, option.key])])
+                          } else {
+                            setFormContextSteps((prev) => prev.filter((item) => item !== option.key))
+                          }
+                        }}
+                      />
+                      {option.label}
+                    </label>
+                  )
+                })}
+              </div>
             </div>
             <label className="flex cursor-pointer items-center gap-2 text-sm text-[var(--color-heading)]">
               <input

@@ -17,8 +17,13 @@ function statusTone(status) {
 
 const STATUS_OPTIONS = ['Open', 'Planned', 'Closed']
 
+function dashToDateInput(v) {
+  if (v == null || v === '' || v === '—') return ''
+  return String(v)
+}
+
 export function IntakesPage() {
-  const { intakes, setSettingsState } = useSettingsStore()
+  const { intakes, programs, saveIntake, removeIntake, saving, loading } = useSettingsStore()
 
   const [viewRow, setViewRow] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -26,6 +31,7 @@ export function IntakesPage() {
   const [deleteTarget, setDeleteTarget] = useState(null)
 
   const [name, setName] = useState('')
+  const [programId, setProgramId] = useState('')
   const [startDate, setStartDate] = useState('')
   const [applicationDeadline, setApplicationDeadline] = useState('')
   const [capacity, setCapacity] = useState(0)
@@ -34,6 +40,7 @@ export function IntakesPage() {
   function openAdd() {
     setEditingId(null)
     setName('')
+    setProgramId('')
     setStartDate('')
     setApplicationDeadline('')
     setCapacity(0)
@@ -44,47 +51,46 @@ export function IntakesPage() {
   function openEdit(r) {
     setEditingId(r.id)
     setName(r.name)
-    setStartDate(r.startDate)
-    setApplicationDeadline(r.applicationDeadline)
+    setProgramId(r.program_id || '')
+    setStartDate(dashToDateInput(r.startDate))
+    setApplicationDeadline(dashToDateInput(r.applicationDeadline))
     setCapacity(r.capacity)
     setStatus(r.status)
     setFormOpen(true)
   }
 
-  function saveForm(e) {
+  async function saveForm(e) {
     e.preventDefault()
     const n = name.trim()
     if (!n) return
     const row = {
       name: n,
+      programId: programId.trim() || undefined,
       startDate: startDate.trim() || '—',
       applicationDeadline: applicationDeadline.trim() || '—',
       capacity: Math.max(0, Number(capacity) || 0),
       status,
     }
-    if (editingId) {
-      setSettingsState((s) => ({
-        ...s,
-        intakes: s.intakes.map((x) => (x.id === editingId ? { ...x, ...row } : x)),
-      }))
-    } else {
-      setSettingsState((s) => ({
-        ...s,
-        intakes: [...s.intakes, { id: `i_${Date.now()}`, ...row }],
-      }))
+    try {
+      await saveIntake(editingId, row)
+      setFormOpen(false)
+    } catch {
+      /* layout */
     }
-    setFormOpen(false)
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return
-    setSettingsState((s) => ({
-      ...s,
-      intakes: s.intakes.filter((x) => x.id !== deleteTarget.id),
-    }))
-    if (viewRow?.id === deleteTarget.id) setViewRow(null)
-    setDeleteTarget(null)
+    try {
+      await removeIntake(deleteTarget.id)
+      if (viewRow?.id === deleteTarget.id) setViewRow(null)
+      setDeleteTarget(null)
+    } catch {
+      /* layout */
+    }
   }
+
+  const busy = saving || loading
 
   const columns = [
     { key: 'name', header: 'Intake', sortable: true, sortType: 'string' },
@@ -104,11 +110,11 @@ export function IntakesPage() {
       sortable: false,
       render: (r) => (
         <div className="flex flex-wrap gap-1">
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => setViewRow(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => setViewRow(r)}>
             <Eye className="h-3.5 w-3.5" aria-hidden />
             View
           </Button>
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openEdit(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => openEdit(r)}>
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Edit
           </Button>
@@ -116,6 +122,7 @@ export function IntakesPage() {
             type="button"
             variant="ghost"
             className="!px-2 !py-1.5 !text-xs text-red-700 hover:bg-red-50"
+            disabled={busy}
             onClick={() => setDeleteTarget(r)}
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -130,7 +137,7 @@ export function IntakesPage() {
     <div className="space-y-6">
       <PageHeader
         actions={
-          <Button type="button" variant="secondary" onClick={openAdd}>
+          <Button type="button" variant="secondary" onClick={openAdd} disabled={busy}>
             <Plus className="h-4 w-4" aria-hidden />
             Create intake
           </Button>
@@ -172,6 +179,7 @@ export function IntakesPage() {
             </Button>
             <Button
               type="button"
+              disabled={busy}
               onClick={() => {
                 const r = viewRow
                 setViewRow(null)
@@ -188,6 +196,14 @@ export function IntakesPage() {
         <SettingsModalBackdrop title={editingId ? 'Edit intake' : 'Create intake'} onClose={() => setFormOpen(false)} wide>
           <form onSubmit={saveForm} className="space-y-4">
             <Input label="Intake name" value={name} onChange={(e) => setName(e.target.value)} required />
+            <Select label="Program (optional)" value={programId} onChange={(e) => setProgramId(e.target.value)}>
+              <option value="">— None —</option>
+              {programs.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name} ({p.code})
+                </option>
+              ))}
+            </Select>
             <Input label="Start date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             <Input
               label="Application deadline"
@@ -210,10 +226,12 @@ export function IntakesPage() {
               ))}
             </Select>
             <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
-              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
+              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button type="submit">{editingId ? 'Save' : 'Create'}</Button>
+              <Button type="submit" disabled={saving}>
+                {editingId ? 'Save' : 'Create'}
+              </Button>
             </div>
           </form>
         </SettingsModalBackdrop>
@@ -226,10 +244,10 @@ export function IntakesPage() {
             undone.
           </p>
           <div className="mt-6 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
+            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={confirmDelete}>
+            <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
               Delete
             </Button>
           </div>

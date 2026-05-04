@@ -146,8 +146,28 @@ export const adminUsers = [
 ]
 
 export const announcements = [
-  { id: 'an1', title: 'Intake deadline extended', audience: 'September 2026 · All', active: true },
-  { id: 'an2', title: 'Document upload maintenance', audience: 'All intakes', active: false },
+  {
+    id: 'an1',
+    title: 'Intake deadline extended',
+    body:
+      'The application deadline for the Fall 2026 intake has been extended. Complete any outstanding items in your checklist before the new date shown in your portal.',
+    targetProgramId: '',
+    targetIntakeId: 'i1',
+    targetPipelineStageKey: '',
+    active: true,
+    updatedAt: '2026-04-01T14:00:00.000Z',
+  },
+  {
+    id: 'an2',
+    title: 'Document upload maintenance',
+    body:
+      'We will perform brief maintenance on the document upload service on Sunday 02:00–04:00 UTC. If uploads fail, wait and try again after the window.',
+    targetProgramId: '',
+    targetIntakeId: '',
+    targetPipelineStageKey: '',
+    active: false,
+    updatedAt: '2026-03-28T09:30:00.000Z',
+  },
 ]
 
 export const faqItems = [

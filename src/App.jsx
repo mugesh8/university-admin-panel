@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppShell } from './components/layout/AppShell.jsx'
 import { AuthProvider } from './features/auth/AuthContext.jsx'
+import { SettingsStoreProvider } from './hooks/useSettingsStore.js'
 import { useAuth } from './features/auth/useAuth.js'
 import { LoginPage } from './features/auth/LoginPage.jsx'
 import { SuperAdminSignupPage } from './features/auth/SuperAdminSignupPage.jsx'
@@ -24,6 +25,7 @@ import { DashboardPage } from './features/dashboard/DashboardPage.jsx'
 import { FaqCategoriesPage } from './features/faq/FaqCategoriesPage.jsx'
 import { FaqPage } from './features/faq/FaqPage.jsx'
 import { ReportsPage } from './features/reporting/ReportsPage.jsx'
+import { SupportTicketCategoriesPage } from './features/support/SupportTicketCategoriesPage.jsx'
 import { SupportTicketsPage } from './features/support/SupportTicketsPage.jsx'
 import { AccountPage } from './features/settings/AccountPage.jsx'
 import { DocRequirementsPage } from './features/settings/DocRequirementsPage.jsx'
@@ -91,6 +93,7 @@ function AppRoutes() {
         <Route path="faq" element={<FaqPage />} />
         <Route path="faq/categories" element={<FaqCategoriesPage />} />
         <Route path="support-tickets" element={<SupportTicketsPage />} />
+        <Route path="support-tickets/categories" element={<SupportTicketCategoriesPage />} />
         <Route path="roles-permissions" element={<RolesPermissionsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
@@ -101,7 +104,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <SettingsStoreProvider>
+        <AppRoutes />
+      </SettingsStoreProvider>
     </AuthProvider>
   )
 }

@@ -12,6 +12,7 @@ import { fetchApplicationByApplicationId } from '../../lib/api/applicationsApi.j
 import { useAuth } from '../auth/useAuth.js'
 import { ApplicationFormStepPanel } from './ApplicationFormStepPanel.jsx'
 import { ApplicationActionsPanel } from './ApplicationActionsPanel.jsx'
+import { useSupportTicketsStore } from '../../hooks/useSupportTicketsStore.js'
 
 function firstRow(value) {
   if (Array.isArray(value)) return value[0] ?? null
@@ -219,7 +220,14 @@ export function ApplicationDetailPage() {
   const [error, setError] = useState('')
   const applicationsPrefixRef = useRef(import.meta.env.VITE_APPLICATIONS_PREFIX || '/api/v1/applications')
   const { setPageTitleOverride } = usePageTitleContext()
+  const { tickets } = useSupportTicketsStore()
   const portalFormValues = useMemo(() => (app ? buildPortalFormValuesFromApplication(app) : {}), [app])
+  const relatedTickets = useMemo(() => {
+    if (!app) return []
+    const email = String(app.formValues?.email || '').trim().toLowerCase()
+    if (!email) return []
+    return tickets.filter((ticket) => String(ticket.applicantEmail || '').trim().toLowerCase() === email)
+  }, [app, tickets])
 
   useEffect(() => {
     let cancelled = false
@@ -342,22 +350,38 @@ export function ApplicationDetailPage() {
         ))}
 
         <TabPanel value="comms">
-          {app.communications.length === 0 ? (
-            <p className="text-sm text-[var(--color-text-muted)]">No messages in demo.</p>
+          {relatedTickets.length === 0 && app.communications.length === 0 ? (
+            <p className="text-sm text-[var(--color-text-muted)]">No communication history yet.</p>
           ) : (
-            <ul className="space-y-2">
+            <div className="space-y-3">
+              {relatedTickets.map((ticket) => (
+                <div key={ticket.id} className="rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                  <p className="font-medium text-[var(--color-heading)]">
+                    {ticket.subject} <span className="text-xs text-[var(--color-text-muted)]">({ticket.category})</span>
+                  </p>
+                  <p className="text-xs text-[var(--color-text-muted)]">Ticket {ticket.id} · Status: {ticket.status}</p>
+                  <div className="mt-2 space-y-2">
+                    {(Array.isArray(ticket.messages) ? ticket.messages : []).map((message) => (
+                      <div key={message.id} className="rounded-md bg-[var(--color-bg)] px-2 py-1.5 text-xs">
+                        <p className="font-medium text-[var(--color-heading)]">
+                          {message.from === 'admin' ? 'Admin' : 'Applicant'} · {message.sentAt}
+                        </p>
+                        <p className="text-[var(--color-text-muted)]">{message.body}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
               {app.communications.map((c) => (
-                <li key={c.id} className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
+                <div key={c.id} className="flex items-start gap-2 rounded-[var(--radius-md)] border border-[var(--color-border)] p-3">
                   <Mail className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
                   <div>
                     <p className="font-medium text-[var(--color-heading)]">{c.subject}</p>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      {c.at} · Status: {c.status}
-                    </p>
+                    <p className="text-xs text-[var(--color-text-muted)]">{c.at} · Status: {c.status}</p>
                   </div>
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </TabPanel>
 

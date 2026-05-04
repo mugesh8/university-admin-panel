@@ -1,24 +1,66 @@
-import { useMemo } from 'react'
-import { usePersistentState } from './usePersistentState.js'
-import { supportTickets as seed } from '../lib/mock-data/scaffold.js'
+import { useCallback, useEffect, useState } from 'react'
+import { deleteSupportTicket, fetchSupportTickets, patchSupportTicket } from '../lib/api/supportTicketsApi.js'
 
-function normalizeTicket(t) {
-  return {
-    ...t,
-    messages: Array.isArray(t.messages) ? t.messages : [],
-  }
-}
-
-function initialTickets() {
-  return JSON.parse(JSON.stringify(seed)).map(normalizeTicket)
-}
-
-/**
- * Mock persistence for support tickets (localStorage).
- */
 export function useSupportTicketsStore() {
-  const defaults = useMemo(() => initialTickets(), [])
-  const [raw, setTickets] = usePersistentState('mucm-support-tickets-v1', defaults)
-  const tickets = useMemo(() => raw.map(normalizeTicket), [raw])
-  return { tickets, setTickets }
+  const [tickets, setTickets] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  const refreshTickets = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const rows = await fetchSupportTickets()
+      setTickets(rows)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load support tickets')
+      setTickets([])
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    refreshTickets()
+  }, [refreshTickets])
+
+  const applyTicketPatch = useCallback(async (id, payload) => {
+    setSaving(true)
+    setError('')
+    try {
+      const updated = await patchSupportTicket(id, payload)
+      setTickets((prev) => prev.map((ticket) => (ticket.id === id ? updated : ticket)))
+      return updated
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update support ticket')
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  const removeTicket = useCallback(async (id) => {
+    setSaving(true)
+    setError('')
+    try {
+      await deleteSupportTicket(id)
+      setTickets((prev) => prev.filter((ticket) => ticket.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete support ticket')
+      throw err
+    } finally {
+      setSaving(false)
+    }
+  }, [])
+
+  return {
+    tickets,
+    loading,
+    saving,
+    error,
+    refreshTickets,
+    applyTicketPatch,
+    removeTicket,
+  }
 }

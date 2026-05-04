@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { ArrowDown, ArrowUp, Pencil, Plus, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Button } from '../../components/ui/Button.jsx'
@@ -101,6 +101,19 @@ export function FaqCategoriesPage() {
     setDeleteTarget(null)
   }
 
+  async function moveCategory(row, direction) {
+    const currentIndex = faqCategories.findIndex((item) => item.id === row.id)
+    const targetIndex = direction === 'up' ? currentIndex - 1 : currentIndex + 1
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= faqCategories.length) return
+    const target = faqCategories[targetIndex]
+    try {
+      await editCategory(row.id, { sort_order: target.sortOrder })
+      await editCategory(target.id, { sort_order: row.sortOrder })
+    } catch {
+      // store already exposes error state
+    }
+  }
+
   const columns = [
     { key: 'name', header: 'Category', sortable: true, sortType: 'string' },
     { key: 'description', header: 'Description', sortable: true, sortType: 'string' },
@@ -114,6 +127,24 @@ export function FaqCategoriesPage() {
           <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openEdit(r._full)}>
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Edit
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="!px-2 !py-1.5 !text-xs"
+            onClick={() => moveCategory(r._full, 'up')}
+          >
+            <ArrowUp className="h-3.5 w-3.5" aria-hidden />
+            Up
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            className="!px-2 !py-1.5 !text-xs"
+            onClick={() => moveCategory(r._full, 'down')}
+          >
+            <ArrowDown className="h-3.5 w-3.5" aria-hidden />
+            Down
           </Button>
           <Button
             type="button"

@@ -8,7 +8,7 @@ import { SettingsModalBackdrop } from '../../components/settings/SettingsModal.j
 import { useSettingsStore } from '../../hooks/useSettingsStore.js'
 
 export function FeeStructurePage() {
-  const { feeStructure, setSettingsState } = useSettingsStore()
+  const { feeStructure, saveFeeRule, removeFeeRule, saving, loading } = useSettingsStore()
 
   const [viewRow, setViewRow] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -35,16 +35,16 @@ export function FeeStructurePage() {
 
   function openEdit(r) {
     setEditingId(r.id)
-    setProgramCode(r.programCode)
-    setIntakeName(r.intakeName)
+    setProgramCode(r.programCode === '—' ? '' : r.programCode)
+    setIntakeName(r.intakeName === '—' ? '' : r.intakeName)
     setFeeType(r.feeType)
     setAmount(r.amount)
     setCurrency(r.currency)
-    setRefundPolicy(r.refundPolicy)
+    setRefundPolicy(r.refundPolicy === '—' ? '' : r.refundPolicy)
     setFormOpen(true)
   }
 
-  function saveForm(e) {
+  async function saveForm(e) {
     e.preventDefault()
     if (!feeType.trim()) return
     const row = {
@@ -55,29 +55,26 @@ export function FeeStructurePage() {
       currency: currency.trim() || 'USD',
       refundPolicy: refundPolicy.trim() || '—',
     }
-    if (editingId) {
-      setSettingsState((s) => ({
-        ...s,
-        feeStructure: s.feeStructure.map((x) => (x.id === editingId ? { ...x, ...row } : x)),
-      }))
-    } else {
-      setSettingsState((s) => ({
-        ...s,
-        feeStructure: [...s.feeStructure, { id: `f_${Date.now()}`, ...row }],
-      }))
+    try {
+      await saveFeeRule(editingId, row)
+      setFormOpen(false)
+    } catch {
+      /* layout */
     }
-    setFormOpen(false)
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return
-    setSettingsState((s) => ({
-      ...s,
-      feeStructure: s.feeStructure.filter((x) => x.id !== deleteTarget.id),
-    }))
-    if (viewRow?.id === deleteTarget.id) setViewRow(null)
-    setDeleteTarget(null)
+    try {
+      await removeFeeRule(deleteTarget.id)
+      if (viewRow?.id === deleteTarget.id) setViewRow(null)
+      setDeleteTarget(null)
+    } catch {
+      /* layout */
+    }
   }
+
+  const busy = saving || loading
 
   const columns = [
     { key: 'programCode', header: 'Program', sortable: true, sortType: 'string' },
@@ -92,11 +89,11 @@ export function FeeStructurePage() {
       sortable: false,
       render: (r) => (
         <div className="flex flex-wrap gap-1">
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => setViewRow(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => setViewRow(r)}>
             <Eye className="h-3.5 w-3.5" aria-hidden />
             View
           </Button>
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openEdit(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => openEdit(r)}>
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Edit
           </Button>
@@ -104,6 +101,7 @@ export function FeeStructurePage() {
             type="button"
             variant="ghost"
             className="!px-2 !py-1.5 !text-xs text-red-700 hover:bg-red-50"
+            disabled={busy}
             onClick={() => setDeleteTarget(r)}
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -118,7 +116,7 @@ export function FeeStructurePage() {
     <div className="space-y-6">
       <PageHeader
         actions={
-          <Button type="button" variant="secondary" onClick={openAdd}>
+          <Button type="button" variant="secondary" onClick={openAdd} disabled={busy}>
             <Plus className="h-4 w-4" aria-hidden />
             Add fee rule
           </Button>
@@ -158,6 +156,7 @@ export function FeeStructurePage() {
             </Button>
             <Button
               type="button"
+              disabled={busy}
               onClick={() => {
                 const r = viewRow
                 setViewRow(null)
@@ -182,10 +181,12 @@ export function FeeStructurePage() {
             </div>
             <Input label="Refund policy" value={refundPolicy} onChange={(e) => setRefundPolicy(e.target.value)} />
             <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
-              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
+              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button type="submit">{editingId ? 'Save' : 'Add'}</Button>
+              <Button type="submit" disabled={saving}>
+                {editingId ? 'Save' : 'Add'}
+              </Button>
             </div>
           </form>
         </SettingsModalBackdrop>
@@ -198,10 +199,10 @@ export function FeeStructurePage() {
             {deleteTarget.programCode} / {deleteTarget.intakeName}? This cannot be undone.
           </p>
           <div className="mt-6 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
+            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={confirmDelete}>
+            <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
               Delete
             </Button>
           </div>

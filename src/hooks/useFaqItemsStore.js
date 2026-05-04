@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createFaq, deleteFaq, fetchFaqs, updateFaq } from '../lib/api/faqsApi.js'
+import { parseStringArray } from '../lib/faqContent.js'
 
 function normalizeFaq(f) {
+  const contextSteps = [
+    ...parseStringArray(f.contextSteps),
+    ...parseStringArray(f.context_steps),
+    ...parseStringArray(f.form_steps),
+    ...parseStringArray(f.step_contexts),
+  ]
   return {
     id: f.id,
     categoryId: f.categoryId ?? null,
@@ -10,6 +17,7 @@ function normalizeFaq(f) {
     answer: String(f.answer ?? '').trim(),
     active: f.active !== false,
     sortOrder: Number(f.sortOrder ?? 0),
+    contextSteps: [...new Set(contextSteps)],
   }
 }
 

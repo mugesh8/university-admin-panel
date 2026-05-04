@@ -1,8 +1,14 @@
 import { API_BASE_URL } from '../env.js'
 
 const FAQS_BASE = `${API_BASE_URL}/api/v1/faqs`
+import { parseStringArray } from '../faqContent.js'
 
 function normalizeFaq(row) {
+  const contextSteps = [
+    ...parseStringArray(row.context_steps),
+    ...parseStringArray(row.form_steps),
+    ...parseStringArray(row.step_contexts),
+  ]
   return {
     id: row.id,
     categoryId: row.category_id ?? row.faq_category?.id ?? null,
@@ -11,6 +17,7 @@ function normalizeFaq(row) {
     answer: String(row.answer ?? '').trim(),
     active: row.is_published !== false,
     sortOrder: Number(row.sort_order ?? 0),
+    contextSteps: [...new Set(contextSteps)],
   }
 }
 

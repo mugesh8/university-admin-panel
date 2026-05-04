@@ -9,7 +9,7 @@ import { SettingsModalBackdrop } from '../../components/settings/SettingsModal.j
 import { useSettingsStore } from '../../hooks/useSettingsStore.js'
 
 export function DocRequirementsPage() {
-  const { documentRequirements, setSettingsState } = useSettingsStore()
+  const { documentRequirements, saveDocumentRequirement, removeDocumentRequirement, saving, loading } = useSettingsStore()
 
   const [viewRow, setViewRow] = useState(null)
   const [formOpen, setFormOpen] = useState(false)
@@ -39,7 +39,7 @@ export function DocRequirementsPage() {
     setFormOpen(true)
   }
 
-  function saveForm(e) {
+  async function saveForm(e) {
     e.preventDefault()
     const n = name.trim()
     if (!n) return
@@ -49,29 +49,26 @@ export function DocRequirementsPage() {
       acceptedTypes: acceptedTypes.trim() || 'PDF',
       maxSizeMb: Math.max(1, Number(maxSizeMb) || 10),
     }
-    if (editingId) {
-      setSettingsState((s) => ({
-        ...s,
-        documentRequirements: s.documentRequirements.map((x) => (x.id === editingId ? { ...x, ...row } : x)),
-      }))
-    } else {
-      setSettingsState((s) => ({
-        ...s,
-        documentRequirements: [...s.documentRequirements, { id: `d_${Date.now()}`, ...row }],
-      }))
+    try {
+      await saveDocumentRequirement(editingId, row)
+      setFormOpen(false)
+    } catch {
+      /* layout */
     }
-    setFormOpen(false)
   }
 
-  function confirmDelete() {
+  async function confirmDelete() {
     if (!deleteTarget) return
-    setSettingsState((s) => ({
-      ...s,
-      documentRequirements: s.documentRequirements.filter((x) => x.id !== deleteTarget.id),
-    }))
-    if (viewRow?.id === deleteTarget.id) setViewRow(null)
-    setDeleteTarget(null)
+    try {
+      await removeDocumentRequirement(deleteTarget.id)
+      if (viewRow?.id === deleteTarget.id) setViewRow(null)
+      setDeleteTarget(null)
+    } catch {
+      /* layout */
+    }
   }
+
+  const busy = saving || loading
 
   const columns = [
     { key: 'name', header: 'Document', sortable: true, sortType: 'string' },
@@ -92,11 +89,11 @@ export function DocRequirementsPage() {
       sortable: false,
       render: (r) => (
         <div className="flex flex-wrap gap-1">
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => setViewRow(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => setViewRow(r)}>
             <Eye className="h-3.5 w-3.5" aria-hidden />
             View
           </Button>
-          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" onClick={() => openEdit(r)}>
+          <Button type="button" variant="ghost" className="!px-2 !py-1.5 !text-xs" disabled={busy} onClick={() => openEdit(r)}>
             <Pencil className="h-3.5 w-3.5" aria-hidden />
             Edit
           </Button>
@@ -104,6 +101,7 @@ export function DocRequirementsPage() {
             type="button"
             variant="ghost"
             className="!px-2 !py-1.5 !text-xs text-red-700 hover:bg-red-50"
+            disabled={busy}
             onClick={() => setDeleteTarget(r)}
           >
             <Trash2 className="h-3.5 w-3.5" aria-hidden />
@@ -118,7 +116,7 @@ export function DocRequirementsPage() {
     <div className="space-y-6">
       <PageHeader
         actions={
-          <Button type="button" variant="secondary" onClick={openAdd}>
+          <Button type="button" variant="secondary" onClick={openAdd} disabled={busy}>
             <Plus className="h-4 w-4" aria-hidden />
             Add document type
           </Button>
@@ -154,6 +152,7 @@ export function DocRequirementsPage() {
             </Button>
             <Button
               type="button"
+              disabled={busy}
               onClick={() => {
                 const r = viewRow
                 setViewRow(null)
@@ -197,10 +196,12 @@ export function DocRequirementsPage() {
               onChange={(e) => setMaxSizeMb(Math.max(1, Number(e.target.value) || 1))}
             />
             <div className="flex justify-end gap-2 border-t border-[#0A1628]/10 pt-4">
-              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)}>
+              <Button type="button" variant="secondary" onClick={() => setFormOpen(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button type="submit">{editingId ? 'Save' : 'Add'}</Button>
+              <Button type="submit" disabled={saving}>
+                {editingId ? 'Save' : 'Add'}
+              </Button>
             </div>
           </form>
         </SettingsModalBackdrop>
@@ -213,10 +214,10 @@ export function DocRequirementsPage() {
             undone.
           </p>
           <div className="mt-6 flex justify-end gap-2">
-            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)}>
+            <Button type="button" variant="secondary" onClick={() => setDeleteTarget(null)} disabled={saving}>
               Cancel
             </Button>
-            <Button type="button" variant="danger" onClick={confirmDelete}>
+            <Button type="button" variant="danger" onClick={confirmDelete} disabled={saving}>
               Delete
             </Button>
           </div>

@@ -1,4 +1,5 @@
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
+import { useSettingsStore } from '../../hooks/useSettingsStore.js'
 
 const TAB_PATHS = [
   '/settings',
@@ -22,9 +23,33 @@ export function SettingsLayout() {
   const { pathname } = useLocation()
   const path = pathname.replace(/\/$/, '') || '/'
   const showTabs = TAB_PATHS.includes(path)
+  const { loading, saving, error, clearError, useBackend } = useSettingsStore()
 
   return (
     <div className="mx-auto w-full max-w-[80rem]">
+      {showTabs && useBackend ? (
+        <div className="mb-4 space-y-2">
+          {loading ? (
+            <p className="text-sm text-[var(--color-text-muted)]">Loading settings from server…</p>
+          ) : null}
+          {saving ? <p className="text-sm text-[var(--color-text-muted)]">Saving…</p> : null}
+          {error ? (
+            <div
+              className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-900"
+              role="alert"
+            >
+              <span>{error}</span>
+              <button
+                type="button"
+                className="shrink-0 rounded-lg px-2 py-1 text-xs font-semibold text-red-900 underline hover:bg-red-100"
+                onClick={clearError}
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       {showTabs ? (
         <nav
           className="mb-6 flex flex-wrap gap-2 border-b border-[#0a1628]/[0.08] pb-4"
