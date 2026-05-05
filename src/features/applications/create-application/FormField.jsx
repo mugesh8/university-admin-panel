@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { CheckCircle2, Download, FileStack } from 'lucide-react'
 import { countries } from '../../../lib/application-form/countries.js'
+import { countryCallingCodes } from '../../../lib/application-form/countryCallingCodes.js'
 import { formatAcceptLabels } from '../../../lib/application-form/fileFieldMeta.js'
 import { normalizeSelectOptions } from '../../../lib/application-form/formVisibility.js'
 import DateInput from './DateInput.jsx'
@@ -10,7 +11,56 @@ function sanitizePhoneInput(raw) {
   const value = String(raw ?? '')
   const cleaned = value.replace(/[^\d+\s()-]/g, '')
   const plusNormalized = cleaned.replace(/\+/g, '')
-  return cleaned.trimStart().startsWith('+') ? `+${plusNormalized}` : plusNormalized
+  return cleaned.trimStart().startsWith('+')
+    ? `+${plusNormalized}`
+    : plusNormalized
+}
+
+const PHONE_COUNTRY_CODES = countryCallingCodes.map((item) => ({
+  key: `${item.code}-${item.dialCode}`,
+  value: item.dialCode,
+  label: `${item.name} (${item.dialCode})`,
+}))
+
+function splitPhoneValue(raw) {
+  const value = sanitizePhoneInput(raw ?? '')
+  const match = value.match(/^\+(\d{1,4})(?:[\s-]*)?(.*)$/)
+  if (!match) {
+    return { countryCode: '+1', localNumber: value }
+  }
+  const fullCode = `+${match[1]}`
+  const knownCode = PHONE_COUNTRY_CODES.some((item) => item.value === fullCode) ? fullCode : '+1'
+  const localNumber = knownCode === fullCode ? match[2] : value.replace(/^\+\d{1,4}\s*/, '')
+  return { countryCode: knownCode, localNumber }
+}
+
+function buildPhoneValue(countryCode, localNumber) {
+  const safeCode = String(countryCode || '+1').trim() || '+1'
+  const safeLocal = sanitizePhoneInput(localNumber ?? '').replace(/^\+/, '').trim()
+  return safeLocal ? `${safeCode} ${safeLocal}` : ''
+}
+
+function RadioOptionDescription({ text }) {
+  if (!text) return null
+  const segments = text.split(/\*\*/)
+  if (segments.length === 1) {
+    return (
+      <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{text}</p>
+    )
+  }
+  return (
+    <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+      {segments.map((part, i) =>
+        i % 2 === 1 ? (
+          <strong key={i} className="font-semibold text-[#0A1628]/85">
+            {part}
+          </strong>
+        ) : (
+          part
+        ),
+      )}
+    </p>
+  )
 }
 
 function CountryCombobox({
@@ -24,12 +74,8 @@ function CountryCombobox({
   const { name, label, required, helper, placeholder } = field
   const wrapperRef = useRef(null)
   const [isOpen, setIsOpen] = useState(false)
-  const [query, setQuery] = useState(value ?? '')
+  const [query, setQuery] = useState(() => value ?? '')
   const [activeIndex, setActiveIndex] = useState(-1)
-
-  useEffect(() => {
-    setQuery(value ?? '')
-  }, [value])
 
   useEffect(() => {
     function handleOutsideClick(event) {
@@ -159,7 +205,7 @@ function CountryCombobox({
         ) : null}
       </div>
       {helper ? (
-        <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
+        <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
       ) : null}
       {error ? (
         <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
@@ -272,7 +318,15 @@ function RepeatableBlock({ field, value, onChange, errors, onUploadActivityChang
   )
 }
 
-function FormField({ field, value, onChange, error, onUploadActivityChange, allValues = {} }) {
+function FormField({
+  field,
+  value,
+  onChange,
+  error,
+  onUploadActivityChange,
+  onFileUpload,
+  allValues = {},
+}) {
   const {
     name,
     label,
@@ -302,7 +356,7 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
               isSub
                 ? 'text-sm'
                 : isPlain
-                  ? 'text-xs font-bold uppercase tracking-widest text-[#0A1628]/45'
+                  ? 'text-sm font-bold uppercase tracking-widest text-[#0A1628]/45'
                   : field.reviewBullets
                     ? 'text-base leading-snug'
                     : 'text-lg'
@@ -312,13 +366,13 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
           </h3>
         ) : null}
         {field.noteBody ? (
-          <p className={`text-xs leading-relaxed ${isPlain ? 'text-[#0A1628]/40' : 'text-[#0A1628]/45'}`}>
+          <p className={`text-sm leading-relaxed ${isPlain ? 'text-[#0A1628]/40' : 'text-[#0A1628]/45'}`}>
             {field.noteBody}
           </p>
         ) : null}
         {field.noteCallout ? (
           <div className="rounded-xl border border-blue-200/50 bg-blue-50/70 p-3.5">
-            <p className="text-xs leading-relaxed text-blue-800/70">{field.noteCallout}</p>
+            <p className="text-sm leading-relaxed text-blue-800/70">{field.noteCallout}</p>
           </div>
         ) : null}
         {field.downloadLink ? (
@@ -418,9 +472,7 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-semibold text-[#0A1628]">{opt.label}</p>
-                    {opt.description ? (
-                      <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{opt.description}</p>
-                    ) : null}
+                    {opt.description ? <RadioOptionDescription text={opt.description} /> : null}
                   </div>
                 </div>
               </button>
@@ -486,7 +538,7 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
         className={`flex cursor-pointer items-start gap-3 transition ${
           declaration
             ? 'rounded-xl border-2 border-[#D4A843]/35 bg-white/90 p-3.5 shadow-inner shadow-[#D4A843]/10 hover:border-[#D4A843]/55 sm:p-4'
-            : 'rounded-md border border-border bg-card p-3.5 shadow-sm hover:border-[#D4A843]/50'
+            : 'rounded-md border border-border bg-card p-3.5 shadow-sm hover:border-accent/50'
         }`}
       >
         <input
@@ -531,7 +583,7 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
           ))}
         </select>
         {helper ? (
-          <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
+          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
         ) : null}
         {error ? (
           <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
@@ -591,7 +643,47 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
           onChange={(event) => onChange(name, event.target.value)}
         />
         {helper ? (
-          <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
+          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
+        ) : null}
+        {error ? (
+          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
+        ) : null}
+      </label>
+    )
+  }
+
+  if (type === 'tel') {
+    const { countryCode, localNumber } = splitPhoneValue(value)
+    return (
+      <label className="flex flex-col justify-start">
+        <span className={`${labelClasses} leading-5`}>
+          {label} {required ? <span className="text-red-500">*</span> : null}
+        </span>
+        <div className="mt-2 grid grid-cols-[minmax(128px,42%)_minmax(0,1fr)] items-start gap-2">
+          <select
+            className={`${inputClasses} mt-0 min-w-0 ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+            value={countryCode}
+            onChange={(event) => onChange(name, buildPhoneValue(event.target.value, localNumber))}
+            aria-label={`${label} country code`}
+          >
+            {PHONE_COUNTRY_CODES.map((option) => (
+              <option key={option.key} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <input
+            className={`${inputClasses} mt-0 min-w-0 ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+            type="tel"
+            value={localNumber}
+            required={required}
+            placeholder={placeholder ?? 'Phone number'}
+            inputMode="numeric"
+            onChange={(event) => onChange(name, buildPhoneValue(countryCode, event.target.value))}
+          />
+        </div>
+        {helper ? (
+          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
         ) : null}
         {error ? (
           <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
@@ -615,7 +707,7 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
           aria-invalid={error ? 'true' : undefined}
         />
         {helper ? (
-          <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
+          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
         ) : null}
         {error ? (
           <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
@@ -647,7 +739,9 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
           }`}
           aria-hidden
         >
-          <p className={`font-bold uppercase tracking-[0.14em] text-[#0A1628]/40 ${compact ? 'text-[10px]' : 'text-xs'}`}>
+          <p
+            className={`font-bold uppercase tracking-[0.14em] text-[#0A1628]/40 ${compact ? 'text-[10px]' : 'text-xs'}`}
+          >
             Signature preview
           </p>
           <p
@@ -663,6 +757,12 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
             {preview || '—'}
           </p>
         </div>
+        {helper ? (
+          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
+        ) : null}
+        {error ? (
+          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
+        ) : null}
       </label>
     )
   }
@@ -688,6 +788,12 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
             <span className="text-muted-foreground">{placeholder ?? '—'}</span>
           )}
         </div>
+        {helper ? (
+          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
+        ) : null}
+        {error ? (
+          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
+        ) : null}
       </label>
     )
   }
@@ -704,12 +810,10 @@ function FormField({ field, value, onChange, error, onUploadActivityChange, allV
         required={required}
         placeholder={placeholder}
         inputMode={type === 'tel' ? 'numeric' : undefined}
-        onChange={(event) =>
-          onChange(name, type === 'tel' ? sanitizePhoneInput(event.target.value) : event.target.value)
-        }
+        onChange={(event) => onChange(name, event.target.value)}
       />
       {helper ? (
-        <small className="mt-1 block text-xs text-muted-foreground">{helper}</small>
+        <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
       ) : null}
       {error ? (
         <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>

@@ -3,7 +3,6 @@ import FormField from './FormField.jsx'
 import PrimaryButton from './PrimaryButton.jsx'
 import { isFieldVisible } from '../../../lib/application-form/formVisibility.js'
 import { getSingleFieldDisplayValue } from '../../../lib/application-form/submissionDisplay.js'
-import { buildSectionGroups, buildReviewSubsectionGroups } from '../../../lib/application-form/buildSectionGroups.js'
 import {
   AlertCircle,
   AlertTriangle,
@@ -21,6 +20,72 @@ import {
   User,
   Users,
 } from 'lucide-react'
+
+/**
+ * Build section groups from a step's visible fields.
+ *
+ * Two modes:
+ *  1. Section-property mode  – used when any field has a `section` string (Steps 1 & 2).
+ *     Fields are grouped by that string in order of first appearance.
+ *  2. Note-divider mode – used for all other steps.
+ *     A `type:'note'` field opens a new group; every non-note field that follows
+ *     belongs to that group until the next note.
+ *
+ * Returns an array of group objects:
+ *   { title, subtitle, noteField, fields }
+ */
+function buildSectionGroups(fields, values) {
+  const visible = fields.filter((f) => isFieldVisible(f, values))
+  const usesSectionProp = visible.some((f) => f.section)
+
+  if (usesSectionProp) {
+    const map = new Map()
+    visible.forEach((field) => {
+      const key = field.section ?? '__ungrouped'
+      if (!map.has(key)) {
+        map.set(key, {
+          title: key === '__ungrouped' ? null : key,
+          subtitle: field.sectionSubtitle ?? null,
+          noteField: null,
+          fields: [],
+        })
+      }
+      // Only store the subtitle from the first field that declares it
+      const group = map.get(key)
+      if (!group.subtitle && field.sectionSubtitle) {
+        group.subtitle = field.sectionSubtitle
+      }
+      group.fields.push(field)
+    })
+    return Array.from(map.values())
+  }
+
+  // Note-divider mode
+  const groups = []
+  let current = { title: null, subtitle: null, noteField: null, fields: [] }
+
+  visible.forEach((field) => {
+    if (field.type === 'note') {
+      if (current.fields.length > 0 || current.noteField) {
+        groups.push(current)
+      }
+      current = {
+        title: field.noteTitle ?? null,
+        subtitle: field.noteBody ?? null,
+        noteField: field,
+        fields: [],
+      }
+    } else {
+      current.fields.push(field)
+    }
+  })
+
+  if (current.fields.length > 0 || current.noteField) {
+    groups.push(current)
+  }
+
+  return groups
+}
 
 // Section header rendered above each group card
 function SectionHeader({ title, subtitle, compact = false }) {
@@ -71,7 +136,7 @@ function SectionHeader({ title, subtitle, compact = false }) {
           {title}
         </h3>
         {subtitle ? (
-          <p className={`mt-0.5 text-muted-foreground ${compact ? 'text-[11px] leading-relaxed' : 'text-xs'}`}>{subtitle}</p>
+          <p className={`mt-0.5 text-muted-foreground ${compact ? 'text-sm leading-relaxed' : 'text-sm'}`}>{subtitle}</p>
         ) : null}
       </div>
     </div>
@@ -80,7 +145,7 @@ function SectionHeader({ title, subtitle, compact = false }) {
 
 /**
  * SectionHeader already shows noteTitle + noteBody for note-divider groups.
- * Avoid rendering those again inside FormField; keep badge / callout / bullets only.
+ * Avoid rendering those again inside FormField; keep badge / callout / bullets / downloadLink only.
  */
 function getNoteFieldForForm(group) {
   const note = group.noteField
@@ -101,6 +166,7 @@ function StepGroupPanel({
   values,
   errors,
   onChange,
+  onFileUpload,
   onUploadActivityChange,
   animationDelay = 0,
 }) {
@@ -153,6 +219,7 @@ function StepGroupPanel({
                   value={values[field.name]}
                   error={errors[field.name]}
                   onChange={onChange}
+                  onFileUpload={onFileUpload}
                   onUploadActivityChange={onUploadActivityChange}
                   allValues={values}
                 />
@@ -175,6 +242,59 @@ function isValueMissing(field, rawValue) {
   return rawValue === undefined || rawValue === null || rawValue === ''
 }
 
+/**
+ * Group fields for Step 8 review: use `field.section` when set, else the most recent
+ * visible note title in step order, else repeatable `sectionTitle`.
+ *
+ * Fields are merged by the same subheading across the whole step (not only when adjacent),
+ * so one misplaced field — e.g. Identity after Citizenship — does not repeat section headers.
+ * Section order follows first occurrence in the step; field order within a section follows
+ * the step definition.
+ */
+function buildReviewSubsectionGroups(reviewStep, values) {
+  const rows = []
+  let lastNoteTitle = null
+
+  for (const field of reviewStep.fields) {
+    if (field.type === 'note') {
+      if (isFieldVisible(field, values)) {
+        lastNoteTitle = field.noteTitle ?? null
+      }
+      continue
+    }
+    if (String(field.name ?? '').startsWith('__')) continue
+    if (!isFieldVisible(field, values)) continue
+
+    let subheading = field.section ?? null
+    if (!subheading && field.type === 'repeatable') {
+      subheading = field.sectionTitle ?? lastNoteTitle
+    }
+    if (!subheading) {
+      subheading = lastNoteTitle
+    }
+
+    rows.push({ subheading, field })
+  }
+
+  const sectionKey = (sub) => (sub === null || sub === undefined ? '__none' : String(sub))
+  const order = []
+  const byKey = new Map()
+
+  for (const { subheading, field } of rows) {
+    const key = sectionKey(subheading)
+    if (!byKey.has(key)) {
+      byKey.set(key, [])
+      order.push(key)
+    }
+    byKey.get(key).push(field)
+  }
+
+  return order.map((key) => ({
+    subheading: key === '__none' ? null : key,
+    fields: byKey.get(key),
+  }))
+}
+
 function StepForm({
   step,
   stepNumber,
@@ -187,6 +307,7 @@ function StepForm({
   formError,
   draftNotice,
   onChange,
+  onFileUpload,
   onNext,
   onPrevious,
   onSaveDraft,
@@ -205,6 +326,7 @@ function StepForm({
   }, [step.id])
 
   useEffect(() => {
+    // 4-year MD should not keep "Premedical Program" selected.
     if (values.programType === '4year' && values.subProgram === 'premedical') {
       onChange('subProgram', '')
     }
@@ -228,6 +350,30 @@ function StepForm({
   )
 
   const groups = buildSectionGroups(step.fields, values)
+  const stepCompletion = useMemo(() => {
+    return steps.map((stepDef) => {
+      const visibleFields = stepDef.fields.filter(
+        (field) => field.type !== 'note' && !String(field.name ?? '').startsWith('__') && isFieldVisible(field, values),
+      )
+
+      const hasMissingRequired = visibleFields.some(
+        (field) => field.required && isValueMissing(field, values[field.name]),
+      )
+      if (hasMissingRequired) {
+        return false
+      }
+
+      const stepFieldNames = new Set(visibleFields.map((field) => field.name))
+      const hasStepError = Object.keys(errors).some((key) => {
+        if (stepFieldNames.has(key)) return true
+        return visibleFields.some(
+          (field) => field.type === 'repeatable' && key.startsWith(`${field.name}__`),
+        )
+      })
+
+      return !hasStepError
+    })
+  }, [steps, values, errors])
 
   const isReviewStep = step.id === 'reviewSubmit'
   const priorSteps = isReviewStep ? steps.slice(0, -1) : []
@@ -301,13 +447,13 @@ function StepForm({
               {step.title}
             </h2>
             {step.description ? (
-              <p className="mt-0.5 text-[11px] text-white/60 sm:text-xs">{step.description}</p>
+              <p className="mt-0.5 text-sm text-white/60 sm:text-base">{step.description}</p>
             ) : null}
           </div>
         </div>
         {isReviewStep ? null : (
           <div className="px-6 py-1.5 sm:px-8 sm:py-2">
-            <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <div className="flex items-center justify-between text-sm text-muted-foreground">
               <span className="font-medium">Overall Progress</span>
               <span className="font-bold text-foreground">{progressPercent}%</span>
             </div>
@@ -329,7 +475,7 @@ function StepForm({
         <div
           className={`flex items-center justify-between border-b border-border px-6 sm:px-8 ${isReviewStep ? 'py-1 sm:py-1' : 'py-1.5'}`}
         >
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-muted-foreground">
+          <p className="text-sm font-bold uppercase tracking-[0.2em] text-muted-foreground">
             Application Progress
           </p>
           <span className="rounded-full bg-[#D4A843]/12 px-3 py-1 text-xs font-bold text-[#7a5a14]">
@@ -344,7 +490,7 @@ function StepForm({
           <div className="flex min-w-max items-start gap-0 sm:min-w-0 sm:justify-center">
             {steps.map((item, index) => {
               const isActive = index === currentIndex
-              const isCompleted = index < currentIndex
+              const isCompleted = index < currentIndex && Boolean(stepCompletion[index])
               const isLast = index === steps.length - 1
 
               return (
@@ -372,7 +518,7 @@ function StepForm({
                             ? 'border-[#D4A843] bg-[#D4A843] text-white shadow-lg shadow-[#D4A843]/30'
                             : isCompleted
                               ? 'border-[#0A1628] bg-[#0A1628] text-white'
-                              : 'border-border bg-muted text-muted-foreground group-hover:border-[#D4A843]/50 group-hover:bg-[#D4A843]/10 group-hover:text-foreground/80'
+                              : 'border-border bg-muted text-muted-foreground group-hover:border-[#D4A843]/50 group-hover:bg-accent/15 group-hover:text-foreground/80'
                         }`}
                       >
                         {isCompleted ? (
@@ -397,9 +543,7 @@ function StepForm({
 
                     {/* Label */}
                     <span
-                      className={`max-w-[72px] text-center font-semibold leading-tight transition-colors ${
-                        isReviewStep ? 'text-[10px] sm:text-[11px]' : 'text-[11px] sm:text-xs'
-                      } ${
+                      className={`max-w-[72px] text-center text-xs font-semibold leading-tight transition-colors sm:text-sm ${
                         isActive
                           ? 'text-[#D4A843]'
                           : isCompleted
@@ -448,13 +592,13 @@ function StepForm({
                   <FileStack className="h-5 w-5" strokeWidth={1.75} aria-hidden />
                 </div>
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                  <p className="text-sm font-bold uppercase tracking-[0.14em] text-muted-foreground">
                     Documents on this step
                   </p>
                   <p className="mt-0.5 text-sm font-semibold text-foreground">
                     Upload progress
                     {uploadActivityCount > 0 ? (
-                      <span className="ml-2 text-xs font-medium text-[#b98a22]">(upload in progress)</span>
+                      <span className="ml-2 text-sm font-medium text-[#b98a22]">(upload in progress)</span>
                     ) : null}
                   </p>
                 </div>
@@ -508,7 +652,7 @@ function StepForm({
                     <p className="text-sm font-semibold tracking-tight text-foreground [font-family:'DM_Serif_Display',serif] sm:text-base">
                       Ready to submit
                     </p>
-                    <p className="mt-1 text-xs leading-snug text-muted-foreground sm:text-sm">
+                    <p className="mt-1 text-sm leading-snug text-muted-foreground sm:text-base">
                       Review each block below, then confirm the declaration.
                     </p>
                   </div>
@@ -581,7 +725,7 @@ function StepForm({
                                 {field.type === 'repeatable' ? (
                                   <div className="space-y-2 px-5 py-3 sm:px-7">
                                     {showRepeatableInlineTitle ? (
-                                      <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+                                      <p className="text-sm font-semibold uppercase tracking-[0.12em] text-muted-foreground">
                                         {repeatableLabel}
                                       </p>
                                     ) : null}
@@ -591,21 +735,21 @@ function StepForm({
                                           key={`${field.name}-row-${rowIndex}`}
                                           className="rounded-lg border border-border bg-muted/40 px-3 py-2.5"
                                         >
-                                          <p className="text-[10px] font-bold uppercase tracking-[0.08em] text-[#b98a22]">
+                                          <p className="text-xs font-bold uppercase tracking-[0.08em] text-[#b98a22]">
                                             {field.itemBadge ?? 'Item'} {rowIndex + 1}
                                           </p>
                                           <div className="mt-2 space-y-0">
                                             {(field.itemFields ?? []).map((sub, subIdx) => (
                                               <div
                                                 key={`${field.name}-${rowIndex}-${sub.name}`}
-                                                className={`grid grid-cols-1 gap-0.5 py-1.5 sm:grid-cols-[minmax(0,200px)_1fr] sm:gap-3 ${
+                                                className={`grid grid-cols-1 gap-0.5 py-1.5 sm:grid-cols-[minmax(0,320px)_1fr] sm:gap-4 ${
                                                   subIdx > 0 ? 'border-t border-[#0A1628]/[0.06]' : ''
                                                 }`}
                                               >
-                                                <p className="text-[11px] font-medium uppercase tracking-[0.06em] text-muted-foreground">
+                                                <p className="text-sm font-semibold leading-snug text-muted-foreground">
                                                   {String(sub.label ?? sub.name)}
                                                 </p>
-                                                <p className="text-sm leading-relaxed text-foreground">
+                                                <p className="text-sm leading-relaxed text-foreground sm:text-right">
                                                   {getSingleFieldDisplayValue(sub, row?.[sub.name])}
                                                 </p>
                                               </div>
@@ -618,13 +762,26 @@ function StepForm({
                                     )}
                                   </div>
                                 ) : (
-                                  <div className="grid grid-cols-1 gap-1 px-5 py-2.5 sm:grid-cols-[minmax(0,210px)_minmax(0,1fr)] sm:items-start sm:gap-5 sm:px-7 sm:py-3">
-                                    <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">
+                                  <div className="grid grid-cols-1 gap-1 px-5 py-2.5 sm:grid-cols-[minmax(0,320px)_minmax(0,1fr)] sm:items-start sm:gap-5 sm:px-7 sm:py-3">
+                                    <p className="text-sm font-semibold leading-snug text-muted-foreground">
                                       {field.label}
                                     </p>
-                                    <p className="text-sm font-medium leading-snug text-foreground">
-                                      {getSingleFieldDisplayValue(field, values[field.name])}
-                                    </p>
+                                    {field.type === 'file' &&
+                                    typeof values[field.name] === 'string' &&
+                                    values[field.name].startsWith('data:image/') ? (
+                                      <div className="space-y-1.5 sm:text-right">
+                                        <p className="text-sm text-muted-foreground">Uploaded signature</p>
+                                        <img
+                                          src={values[field.name]}
+                                          alt=""
+                                          className="max-h-24 max-w-[240px] rounded-lg border border-border bg-card object-contain sm:ml-auto"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <p className="text-sm font-medium leading-snug text-foreground sm:text-right">
+                                        {getSingleFieldDisplayValue(field, values[field.name])}
+                                      </p>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -660,8 +817,8 @@ function StepForm({
                         value={values[group.noteField.name]}
                         error={errors[group.noteField.name]}
                         onChange={onChange}
+                        onFileUpload={onFileUpload}
                         onUploadActivityChange={reportUploadActivity}
-                        allValues={values}
                       />
                     </div>
                   ) : null}
@@ -687,8 +844,8 @@ function StepForm({
                             value={values[field.name]}
                             error={errors[field.name]}
                             onChange={onChange}
+                            onFileUpload={onFileUpload}
                             onUploadActivityChange={reportUploadActivity}
-                            allValues={values}
                           />
                         </div>
                       ))}
@@ -703,7 +860,7 @@ function StepForm({
             <h4 className="text-xl text-foreground [font-family:'DM_Serif_Display',serif]">
               Review Complete
             </h4>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-base text-muted-foreground">
               Your application details are saved. Click submit to complete your application.
             </p>
           </div>
@@ -716,6 +873,7 @@ function StepForm({
               values={values}
               errors={errors}
               onChange={onChange}
+              onFileUpload={onFileUpload}
               onUploadActivityChange={reportUploadActivity}
               animationDelay={groupIndex * 60}
             />

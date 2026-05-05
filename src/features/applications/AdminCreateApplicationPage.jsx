@@ -571,7 +571,11 @@ export function AdminCreateApplicationPage() {
     }
 
     if (field.type === 'tel') {
-      const digits = String(stringValue).replace(/\D/g, '')
+      const phoneRaw = String(stringValue).trim()
+      if (!field.required && /^\+\d{1,4}$/.test(phoneRaw)) {
+        return ''
+      }
+      const digits = phoneRaw.replace(/\D/g, '')
       if (digits.length < 7) {
         return 'Please enter a valid phone number.'
       }
@@ -665,6 +669,13 @@ export function AdminCreateApplicationPage() {
           next.studentSignatureUpload = ''
         }
       }
+      if (name === 'reviewSignatureMethod') {
+        if (value === 'upload') {
+          next.reviewSignatureTyped = ''
+        } else if (value === 'type') {
+          next.reviewSignatureUpload = ''
+        }
+      }
       return next
     })
 
@@ -677,6 +688,10 @@ export function AdminCreateApplicationPage() {
       if (name === 'studentSignatureMethod') {
         delete nextErrors.studentSignatureUpload
         delete nextErrors.studentSignatureTyped
+      }
+      if (name === 'reviewSignatureMethod') {
+        delete nextErrors.reviewSignatureUpload
+        delete nextErrors.reviewSignatureTyped
       }
 
       const activeField =
@@ -734,6 +749,36 @@ export function AdminCreateApplicationPage() {
 
   function handlePrevious() {
     setCurrentStepIndex((previous) => Math.max(previous - 1, 0))
+  }
+
+  function handleStepClick(targetIndex) {
+    const safeTarget = Math.max(0, Math.min(targetIndex, applicationSteps.length - 1))
+    if (safeTarget <= currentStepIndex) {
+      setFormError('')
+      setCurrentStepIndex(safeTarget)
+      return
+    }
+
+    let firstInvalidStep = -1
+    const accumulatedErrors = {}
+    for (let stepIndex = 0; stepIndex < safeTarget; stepIndex += 1) {
+      const stepErrors = validateStep(applicationSteps[stepIndex], formValues)
+      if (Object.keys(stepErrors).length > 0) {
+        if (firstInvalidStep === -1) firstInvalidStep = stepIndex
+        Object.assign(accumulatedErrors, stepErrors)
+      }
+    }
+
+    if (firstInvalidStep >= 0) {
+      setValidationErrors((previous) => ({ ...previous, ...accumulatedErrors }))
+      setFormError('Please complete required fields in earlier steps before moving ahead.')
+      setCurrentStepIndex(firstInvalidStep)
+      return
+    }
+
+    setValidationErrors({})
+    setFormError('')
+    setCurrentStepIndex(safeTarget)
   }
 
   async function handleSaveDraft() {
@@ -901,7 +946,7 @@ export function AdminCreateApplicationPage() {
           totalSteps={applicationSteps.length}
           steps={applicationSteps}
           currentIndex={currentStepIndex}
-          onStepClick={setCurrentStepIndex}
+          onStepClick={handleStepClick}
           values={formValues}
           errors={validationErrors}
           formError={formError}
