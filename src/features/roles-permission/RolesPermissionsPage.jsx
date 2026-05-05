@@ -7,6 +7,7 @@ import { DataTable } from '../../components/ui/DataTable.jsx'
 import { Input } from '../../components/ui/Input.jsx'
 import { Select } from '../../components/ui/Select.jsx'
 import { permissionLabel, rbacModules } from '../../lib/mock-data/roles-permissions.js'
+import { countries } from '../../lib/application-form/countries.js'
 import { useAuth } from '../auth/useAuth.js'
 import {
   createAdmin,
@@ -93,6 +94,7 @@ export function RolesPermissionsPage() {
   const [accountDeleteTarget, setAccountDeleteTarget] = useState(null)
   const [accName, setAccName] = useState('')
   const [accEmail, setAccEmail] = useState('')
+  const [accRegion, setAccRegion] = useState('')
   const [accRoleId, setAccRoleId] = useState('')
   const [accActive, setAccActive] = useState(true)
 
@@ -130,6 +132,7 @@ export function RolesPermissionsPage() {
           id: a.id,
           name: a.full_name || '',
           email: a.email || '',
+          country: a.country || a.region || '',
           roleId: a.role_id,
           roleName: a.role?.name || '',
           active: Boolean(a.is_active),
@@ -282,6 +285,7 @@ export function RolesPermissionsPage() {
     setAccountEditingId(null)
     setAccName('')
     setAccEmail('')
+    setAccRegion('')
     setAccRoleId(roles[0]?.id ?? '')
     setAccActive(true)
     setAccountFormOpen(true)
@@ -291,6 +295,7 @@ export function RolesPermissionsPage() {
     setAccountEditingId(a.id)
     setAccName(a.name)
     setAccEmail(a.email)
+    setAccRegion(a.country || '')
     setAccRoleId(a.roleId)
     setAccActive(Boolean(a.active))
     setAccountFormOpen(true)
@@ -300,12 +305,13 @@ export function RolesPermissionsPage() {
     e.preventDefault()
     const name = accName.trim()
     const email = accEmail.trim()
-    if (!name || !email || !accRoleId) return
+    const region = accRegion.trim()
+    if (!name || !email || !region || !accRoleId) return
 
     if (accountEditingId) {
       const res = await updateAdmin(
         accountEditingId,
-        { full_name: name, email, role_id: accRoleId, is_active: accActive },
+        { full_name: name, email, country: region, role_id: accRoleId, is_active: accActive },
         token,
       )
       if (!res.success) {
@@ -313,7 +319,10 @@ export function RolesPermissionsPage() {
         return
       }
     } else {
-      const res = await createAdmin({ full_name: name, email, role_id: accRoleId, is_active: accActive }, token)
+      const res = await createAdmin(
+        { full_name: name, email, country: region, role_id: accRoleId, is_active: accActive },
+        token,
+      )
       if (!res.success) {
         setError(res.message || 'Failed to create account')
         return
@@ -461,6 +470,13 @@ export function RolesPermissionsPage() {
                 sortable: true,
                 sortType: 'string',
                 render: (a) => <span className="text-sm text-[var(--color-text)]">{a.email}</span>,
+              },
+              {
+                key: 'region',
+                header: 'Country',
+                sortable: true,
+                sortType: 'string',
+                render: (a) => <span className="text-sm text-[var(--color-text)]">{a.country || a.region || '-'}</span>,
               },
               {
                 key: 'roleId',
@@ -687,6 +703,16 @@ export function RolesPermissionsPage() {
               required
               autoComplete="email"
             />
+            <Select label="Region (Country)" value={accRegion} onChange={(e) => setAccRegion(e.target.value)} required>
+              <option value="" disabled>
+                Select a country
+              </option>
+              {countries.map((country) => (
+                <option key={country} value={country}>
+                  {country}
+                </option>
+              ))}
+            </Select>
             <Select label="Role" value={accRoleId} onChange={(e) => setAccRoleId(e.target.value)} required>
               {roles.map((r) => (
                 <option key={r.id} value={r.id}>

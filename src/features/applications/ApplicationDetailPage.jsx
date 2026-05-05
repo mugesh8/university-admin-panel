@@ -8,7 +8,10 @@ import { Card } from '../../components/ui/Card.jsx'
 import { Tabs, TabList, TabPanel, TabTrigger } from '../../components/ui/Tabs.jsx'
 import { buildPortalFormValuesFromApplication } from '../../lib/application-form/buildPortalFormValuesFromApplication.js'
 import { portalFormSteps, portalStepTabValue } from '../../lib/application-form/portalFormSteps.js'
-import { fetchApplicationByApplicationId } from '../../lib/api/applicationsApi.js'
+import {
+  fetchApplicationByApplicationId,
+  updateApplicationStatusByApplicationId,
+} from '../../lib/api/applicationsApi.js'
 import { useAuth } from '../auth/useAuth.js'
 import { ApplicationFormStepPanel } from './ApplicationFormStepPanel.jsx'
 import { ApplicationActionsPanel } from './ApplicationActionsPanel.jsx'
@@ -28,6 +31,14 @@ function statusLabel(currentStatus, completedSteps) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
+}
+
+function toBackendStatus(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
 }
 
 function mapBackendToDetailApp(row) {
@@ -276,6 +287,77 @@ export function ApplicationDetailPage() {
     return () => setPageTitleOverride(null)
   }, [app, setPageTitleOverride])
 
+  async function handleStageChange(nextStageId, nextStatusLabel) {
+    setApp((previous) =>
+      previous
+        ? {
+            ...previous,
+            pipelineStageId: nextStageId || previous.pipelineStageId,
+            status: nextStatusLabel || previous.status,
+            daysInStage: 0,
+          }
+        : previous,
+    )
+
+    if (!app?.id) return
+    try {
+      await updateApplicationStatusByApplicationId(
+        app.id,
+        {
+          current_status: toBackendStatus(nextStageId || nextStatusLabel || app.status),
+          status_label: nextStatusLabel || nextStageId || app.status,
+        },
+        {
+          token,
+          preferredPrefix: applicationsPrefixRef.current,
+        },
+      )
+    } catch (err) {
+      setError(err?.message || 'Failed to update application status.')
+    }
+  }
+
+  async function handleDispositionChange(nextStatusLabel) {
+    setApp((previous) =>
+      previous
+        ? {
+            ...previous,
+            status: nextStatusLabel || previous.status,
+          }
+        : previous,
+    )
+
+    if (!app?.id) return
+    try {
+      await updateApplicationStatusByApplicationId(
+        app.id,
+        {
+          current_status: toBackendStatus(nextStatusLabel || app.status),
+          status_label: nextStatusLabel || app.status,
+        },
+        {
+          token,
+          preferredPrefix: applicationsPrefixRef.current,
+        },
+      )
+    } catch (err) {
+      setError(err?.message || 'Failed to update application status.')
+    }
+  }
+
+  function handleStageComplete(stageId) {
+    if (!stageId) return
+    setApp((previous) => {
+      if (!previous) return previous
+      const next = new Set(previous.completedStageIds ?? [])
+      next.add(stageId)
+      return {
+        ...previous,
+        completedStageIds: Array.from(next),
+      }
+    })
+  }
+
   if (loading) {
     return <p className="text-sm text-[var(--color-text-muted)]">Loading application...</p>
   }
@@ -404,7 +486,12 @@ export function ApplicationDetailPage() {
         </TabPanel>
 
         <TabPanel value="actions">
-          <ApplicationActionsPanel application={app} />
+          <ApplicationActionsPanel
+            application={app}
+            onStageChange={handleStageChange}
+            onDispositionChange={handleDispositionChange}
+            onStageComplete={handleStageComplete}
+          />
         </TabPanel>
       </Tabs>
     </div>

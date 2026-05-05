@@ -16,19 +16,30 @@ import {
 import {
   markApplicationStageCompleted,
   setApplicationDisposition,
-  setApplicationPipelineStage,
 } from '../../lib/mock-data/applications.js'
 
-export function ApplicationActionsPanel({ application }) {
+export function ApplicationActionsPanel({
+  application,
+  onStageChange,
+  onDispositionChange,
+  onStageComplete,
+}) {
   const navigate = useNavigate()
   const [currentStageId, setCurrentStageId] = useState(() => getCurrentPipelineStage(application).id)
   const [lastAction, setLastAction] = useState(null)
+  const [completedStageIds, setCompletedStageIds] = useState(() => application.completedStageIds ?? [])
   const current = getPipelineStageById(currentStageId) ?? getCurrentPipelineStage(application)
-  const manuallyCompletedStageIds = new Set(application.completedStageIds ?? [])
+  const manuallyCompletedStageIds = new Set(completedStageIds ?? [])
+  const stableButtonClass =
+    'py-2 text-xs !translate-y-0 hover:!translate-y-0 active:!translate-y-0 !transition-none !backdrop-blur-none'
 
   useEffect(() => {
     setCurrentStageId(getCurrentPipelineStage(application).id)
   }, [application.id, application.status, application.pipelineStageId])
+
+  useEffect(() => {
+    setCompletedStageIds(application.completedStageIds ?? [])
+  }, [application.id, application.completedStageIds])
 
   function runAction(stageId, actionId, label) {
     setLastAction({ key: `${stageId}:${actionId}`, label, at: new Date() })
@@ -52,15 +63,13 @@ export function ApplicationActionsPanel({ application }) {
 
     const nextStageId = getNextPipelineStageForAction(stage.id, action.id)
     if (nextStageId) {
-      const moved = setApplicationPipelineStage(application.id, nextStageId)
-      if (moved) setCurrentStageId(nextStageId)
       const nextStage = getPipelineStageById(nextStageId)
+      setCurrentStageId(nextStageId)
+      onStageChange?.(nextStageId, nextStage?.displayName ?? '')
       runAction(
         stage.id,
         action.id,
-        moved
-          ? `${action.label} → moved to ${nextStage?.displayName ?? 'next stage'}`
-          : `${action.label} → unable to update stage`,
+        `${action.label} → moved to ${nextStage?.displayName ?? 'next stage'}`,
       )
       return
     }
@@ -74,25 +83,34 @@ export function ApplicationActionsPanel({ application }) {
 
     if (action.id === 'waitlist') {
       setApplicationDisposition(application.id, 'Waitlisted')
+      onDispositionChange?.('Waitlisted')
       runAction(stage.id, action.id, 'Applied disposition: Waitlisted')
       return
     }
     if (action.id === 'defer') {
       setApplicationDisposition(application.id, 'Deferred to Next Semester')
+      onDispositionChange?.('Deferred to Next Semester')
       runAction(stage.id, action.id, 'Applied disposition: Deferred')
       return
     }
     if (action.id === 'generate_rejection_letter') {
       setApplicationDisposition(application.id, 'Rejected')
+      onDispositionChange?.('Rejected')
       runAction(stage.id, action.id, 'Applied disposition: Rejected (letter generated)')
       return
     }
     if (action.id === 'handoff_student_services') {
       const completed = markApplicationStageCompleted(application.id, stage.id)
+      setCompletedStageIds((previous) => {
+        const next = new Set(previous ?? [])
+        next.add(stage.id)
+        return Array.from(next)
+      })
+      onStageComplete?.(stage.id)
       runAction(
         stage.id,
         action.id,
-        completed ? `${stage.displayName} marked as completed` : `Unable to complete ${stage.displayName}`,
+        completed ? `${stage.displayName} marked as completed` : `${stage.displayName} marked as completed`,
       )
       return
     }
@@ -189,7 +207,7 @@ export function ApplicationActionsPanel({ application }) {
                         type="button"
                         variant={shouldUsePrimary ? 'primary' : 'secondary'}
                         disabled={isUpcoming}
-                        className={`py-2 text-xs hover:translate-y-0 ${
+                        className={`${stableButtonClass} ${
                           !isCurrent && !isCompleted
                             ? ''
                             : isCurrent && !shouldUsePrimary
@@ -233,9 +251,10 @@ export function ApplicationActionsPanel({ application }) {
               key={d.id}
               type="button"
               variant="ghost"
-              className="border border-[var(--color-border)] py-2 text-xs hover:translate-y-0"
+              className={`border border-[var(--color-border)] ${stableButtonClass}`}
               onClick={() => {
                 setApplicationDisposition(application.id, d.label)
+                onDispositionChange?.(d.label)
                 runAction('disposition', d.id, `Apply disposition: ${d.label}`)
               }}
             >
@@ -256,7 +275,7 @@ export function ApplicationActionsPanel({ application }) {
               key={action}
               type="button"
               variant="secondary"
-              className="py-2 text-xs hover:translate-y-0"
+              className={stableButtonClass}
               onClick={() => runAction('universal', action, action)}
             >
               {action}

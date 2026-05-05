@@ -177,3 +177,18 @@ export async function fetchApplicationByRowId(applicationRowId, options = {}) {
   return { application: null, preferredPrefix: options.preferredPrefix || DEFAULT_APPLICATION_PREFIX }
 }
 
+export async function updateApplicationStatusByApplicationId(applicationId, payload, options = {}) {
+  const safeApplicationId = encodeURIComponent(String(applicationId || '').trim())
+  if (!safeApplicationId) {
+    throw new Error('Application id is required to update status.')
+  }
+
+  return requestAcrossPrefixes({
+    method: 'PUT',
+    path: `/by-application-id/${safeApplicationId}/status`,
+    payload,
+    token: options.token,
+    preferredPrefix: options.preferredPrefix,
+  })
+}
+
