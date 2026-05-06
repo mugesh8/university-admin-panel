@@ -32,6 +32,12 @@ export function AuthProvider({ children }) {
 
   const signOut = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY)
+    // Clear admin application drafts
+    window.localStorage.removeItem('mucm-admin-application-form')
+    window.localStorage.removeItem('mucm-admin-current-step')
+    window.localStorage.removeItem('mucm-admin-submitted-applications')
+    window.localStorage.removeItem('mucm-admin-active-application')
+    window.localStorage.removeItem('mucm-admin-last-user-email')
     setUser(null)
   }, [])
 

@@ -24,8 +24,10 @@ function normalizeProgram(row) {
     code: String(row.code ?? '').trim(),
     durationYears: Number(row.durationYears ?? row.duration_years) || 0,
     level: row.level == null || row.level === '' ? '—' : String(row.level),
+    description: row.description == null || row.description === '' ? '—' : String(row.description),
     capacity: Number(row.capacity) || 0,
     active: row.active !== false,
+    subPrograms: Array.isArray(row.subPrograms) ? row.subPrograms : [],
   }
 }
 
@@ -173,8 +175,10 @@ export async function createProgram(payload, token) {
         code: payload.code,
         durationYears: payload.durationYears,
         level: payload.level === '—' || payload.level == null || payload.level === '' ? null : payload.level,
+        description: payload.description === '—' || payload.description == null || payload.description === '' ? null : payload.description,
         capacity: payload.capacity,
         active: payload.active !== false,
+        subPrograms: Array.isArray(payload.subPrograms) ? payload.subPrograms : [],
         tenant_id: payload.tenant_id ?? payload.tenantId ?? undefined,
       }),
     },
@@ -193,8 +197,10 @@ export async function updateProgram(id, payload, token) {
         code: payload.code,
         durationYears: payload.durationYears,
         level: payload.level === '—' || payload.level == null || payload.level === '' ? null : payload.level,
+        description: payload.description === '—' || payload.description == null || payload.description === '' ? null : payload.description,
         capacity: payload.capacity,
         active: payload.active,
+        subPrograms: Array.isArray(payload.subPrograms) ? payload.subPrograms : [],
         tenant_id: payload.tenant_id ?? payload.tenantId ?? undefined,
       }),
     },

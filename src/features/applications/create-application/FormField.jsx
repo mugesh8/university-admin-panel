@@ -557,11 +557,11 @@ function FormField({
   }
 
   if (type === 'select') {
-    const normalized = normalizeSelectOptions(options)
-    const filteredOptions =
-      name === 'subProgram' && allValues.programType === '4year'
-        ? normalized.filter((option) => option.value !== 'premedical')
-        : normalized
+    const resolvedOptions =
+      field.dynamicOptions && allValues.programType
+        ? (field.dynamicOptions[allValues.programType] ?? [])
+        : options
+    const normalized = normalizeSelectOptions(resolvedOptions)
     return (
       <label>
         <span className={labelClasses}>
@@ -576,7 +576,7 @@ function FormField({
           <option value="" disabled hidden>
             {placeholder ?? 'Select an option'}
           </option>
-          {filteredOptions.map((option) => (
+          {normalized.map((option) => (
             <option key={option.value} value={option.value}>
               {option.label}
             </option>

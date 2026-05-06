@@ -1,21 +1,4 @@
-import {
-  emergencyRelationshipOptions,
-  englishProficiencyOptions,
-  englishTestTypeOptions,
-  ethnicityOptions,
-  experienceTypeOptions,
-  genderOptions,
-  intakeYearOptions,
-  paymentOptions,
-  programTypeOptions,
-  pronounOptions,
-  referralSourceOptions,
-  semesterOptions,
-  standardizedTestTypeOptions,
-  subProgramOptions,
-  titleOptions,
-  visaStatusOptions,
-} from './applicationFormOptions.js'
+import { paymentOptions } from './applicationFormOptions.js'
 
 const educationDefaultItem = {
   institution: '',
@@ -43,7 +26,97 @@ const transferDefaultItem = {
   courses: '',
 }
 
-export const applicationSteps = [
+const CATEGORY_KEYS = [
+  'Personal Details - Title',
+  'Personal Details - Pronouns',
+  'Personal Details - Gender',
+  'Personal Details - Ethnicity',
+  'Personal Details - Visa/Immigration Status',
+  'Emergency Contact - Relationship',
+  'Admission Sought - Preferred Semester',
+  'Admission Sought - Preferred Year',
+  'English Language Proficiency - Proficiency Level',
+  'English Language Proficiency - Test Type',
+  'Standardized Tests - Test Type',
+  'Experience & Motivation - Type of Experience',
+  'Disclosures - Referral Source',
+]
+
+/**
+ * Build application steps with dynamic dropdown options.
+ * @param {Record<string, string[]>} dynOptions - map of category name → options array
+ * @param {Array} dynPrograms - programs from settings store
+ * @param {Array} dynDocRequirements - document requirements from settings store
+ */
+export function buildApplicationSteps(dynOptions = {}, dynPrograms = [], dynDocRequirements = []) {
+  function opt(categoryName) {
+    const v = dynOptions[categoryName]
+    return Array.isArray(v) && v.length > 0 ? v : []
+  }
+
+  const programTypeOptions = dynPrograms.length > 0
+    ? dynPrograms.map((p) => ({
+        value: p.code,
+        label: p.name,
+        description: p.description && p.description !== '—' ? p.description : undefined,
+      }))
+    : []
+
+  const subProgramsByProgram = {}
+  dynPrograms.forEach((p) => {
+    if (Array.isArray(p.subPrograms) && p.subPrograms.length > 0) {
+      subProgramsByProgram[p.code] = p.subPrograms.map((sp) => ({ value: sp, label: sp }))
+    }
+  })
+
+  // Map document requirement name → form field name
+  const DOC_NAME_TO_FIELD = {
+    'Passport': 'passport',
+    'Bank Statement (Minimum 3 Months)': 'bankStatement',
+    'Premedical / Bachelor / Undergraduate / 12th Grade Transcript': 'preMedTranscript',
+    '11th Grade Transcript': 'grade11Transcript',
+    'CV / Resume': 'cv',
+    'Passport-Size Photograph': 'passportPhoto',
+    'Other professional transcripts / certifications / awards': 'otherProfessionalTranscripts',
+    'Exam Results Marksheet (MCAT / NEET / UCAT)': 'examResults',
+  }
+
+  function acceptedTypesToAttr(acceptedTypes) {
+    return String(acceptedTypes ?? '')
+      .split(',')
+      .map((t) => `.${t.trim().toLowerCase()}`)
+      .filter(Boolean)
+      .join(',')
+  }
+
+  // Build document fields from dynDocRequirements, fall back to static if empty
+  const dynamicDocFields = dynDocRequirements.length > 0
+    ? dynDocRequirements
+        .map((doc) => {
+          const fieldName = DOC_NAME_TO_FIELD[doc.name]
+          if (!fieldName) return null
+          return {
+            name: fieldName,
+            label: doc.name,
+            type: 'file',
+            required: Boolean(doc.required),
+            accept: acceptedTypesToAttr(doc.acceptedTypes),
+            maxFileSizeMB: doc.maxSizeMb,
+          }
+        })
+        .filter(Boolean)
+    : [
+        { name: 'passport', label: 'Passport', type: 'file', required: true, accept: '.pdf,.jpg,.jpeg,.png' },
+        { name: 'bankStatement', label: 'Bank Statement (Minimum 3 Months)', type: 'file', required: true, accept: '.pdf', maxFileSizeMB: 10 },
+        { name: 'preMedTranscript', label: 'Premedical / Bachelor / Undergraduate / 12th Grade Transcript', type: 'file', required: true, accept: '.pdf,.jpg,.jpeg,.png' },
+        { name: 'grade11Transcript', label: '11th Grade Transcript', type: 'file', required: true, accept: '.pdf,.jpg,.jpeg,.png' },
+        { name: 'cv', label: 'CV / Resume', type: 'file', required: true, accept: '.pdf,.doc,.docx', maxFileSizeMB: 10 },
+        { name: 'passportPhoto', label: 'Passport-Size Photograph', type: 'file', required: true, accept: '.jpg,.jpeg,.png' },
+        { name: 'otherProfessionalTranscripts', label: 'Other professional transcripts / certifications / awards', type: 'file', accept: '.pdf,.jpg,.jpeg,.png' },
+        { name: 'examResults', label: 'Exam Results Marksheet (MCAT / NEET / UCAT)', type: 'file', accept: '.pdf,.jpg,.jpeg,.png' },
+      ]
+
+  return [
   {
     id: 'personalDetails',
     title: 'Personal Details',
@@ -54,7 +127,7 @@ export const applicationSteps = [
         label: 'Title',
         type: 'select',
         required: true,
-        options: titleOptions,
+        options: opt('Personal Details - Title'),
         placeholder: 'Select',
         section: 'Identity',
         sectionSubtitle: 'Legal name as it appears on your passport or government ID',
@@ -67,7 +140,7 @@ export const applicationSteps = [
         name: 'pronouns',
         label: 'Pronouns',
         type: 'select',
-        options: pronounOptions,
+        options: opt('Personal Details - Pronouns'),
         placeholder: 'Select pronouns',
         section: 'Identity',
       },
@@ -83,7 +156,7 @@ export const applicationSteps = [
         label: 'Gender',
         type: 'select',
         required: true,
-        options: genderOptions,
+        options: opt('Personal Details - Gender'),
         placeholder: 'Select gender',
         section: 'Identity',
       },
@@ -108,7 +181,7 @@ export const applicationSteps = [
         name: 'ethnicity',
         label: 'Ethnicity / Race',
         type: 'select',
-        options: ethnicityOptions,
+        options: opt('Personal Details - Ethnicity'),
         placeholder: 'Select ethnicity',
         section: 'Identity',
       },
@@ -125,7 +198,7 @@ export const applicationSteps = [
         label: 'Visa / Immigration Status',
         type: 'select',
         required: true,
-        options: visaStatusOptions,
+        options: opt('Personal Details - Visa/Immigration Status'),
         placeholder: 'Select status',
         section: 'Citizenship & Immigration',
       },
@@ -216,7 +289,7 @@ export const applicationSteps = [
         label: 'Relationship',
         type: 'select',
         required: true,
-        options: emergencyRelationshipOptions,
+        options: opt('Emergency Contact - Relationship'),
         placeholder: 'Select relationship',
         section: 'Emergency Contact',
       },
@@ -337,7 +410,8 @@ export const applicationSteps = [
         name: 'subProgram',
         label: 'Sub-Program',
         type: 'select',
-        options: subProgramOptions.map((o) => ({ value: o.value, label: o.label })),
+        options: [],
+        dynamicOptions: subProgramsByProgram,
         placeholder: 'Select sub-program (optional)',
         helper: 'If unsure, leave this blank and our admissions team will guide you',
         showWhen: { field: 'programType', notEquals: '' },
@@ -347,7 +421,7 @@ export const applicationSteps = [
         label: 'Preferred Semester',
         type: 'select',
         required: true,
-        options: semesterOptions,
+        options: opt('Admission Sought - Preferred Semester'),
         placeholder: 'Select semester',
       },
       {
@@ -355,7 +429,7 @@ export const applicationSteps = [
         label: 'Preferred Year',
         type: 'select',
         required: true,
-        options: intakeYearOptions,
+        options: opt('Admission Sought - Preferred Year'),
         placeholder: 'Select year',
       },
       {
@@ -400,7 +474,7 @@ export const applicationSteps = [
         label: 'Proficiency Level',
         type: 'select',
         required: true,
-        options: englishProficiencyOptions,
+        options: opt('English Language Proficiency - Proficiency Level'),
         defaultValue: 'Speaking and writing',
         placeholder: 'Select',
       },
@@ -416,7 +490,7 @@ export const applicationSteps = [
         name: 'englishTestType',
         label: 'Test Type',
         type: 'select',
-        options: englishTestTypeOptions,
+        options: opt('English Language Proficiency - Test Type'),
         placeholder: 'Select test',
         showWhen: { field: 'englishProficiency', notEquals: '' },
       },
@@ -447,7 +521,7 @@ export const applicationSteps = [
         name: 'standardizedTestType',
         label: 'Test Type',
         type: 'select',
-        options: standardizedTestTypeOptions,
+        options: opt('Standardized Tests - Test Type'),
         placeholder: 'Select test',
         showWhen: { field: 'hasStandardizedTest', equals: 'Yes' },
       },
@@ -482,7 +556,7 @@ export const applicationSteps = [
             name: 'type',
             label: 'Type of Experience',
             type: 'select',
-            options: experienceTypeOptions,
+            options: opt('Experience & Motivation - Type of Experience'),
             placeholder: 'Select type',
           },
           {
@@ -649,7 +723,7 @@ export const applicationSteps = [
         name: 'howHeard',
         label: 'Referral Source',
         type: 'select',
-        options: referralSourceOptions,
+        options: opt('Disclosures - Referral Source'),
         placeholder: 'Select an option',
         section: 'Referral',
       },
@@ -677,72 +751,7 @@ export const applicationSteps = [
           'Required documents are listed first, then optional uploads. Use PDF, JPEG, or PNG unless noted; each file must be within the maximum size shown for that field (typically 5–10 MB).',
         fullWidth: true,
       },
-      {
-        name: 'passport',
-        label: 'Passport',
-        type: 'file',
-        required: true,
-        helper: 'Clear scan of your passport bio page showing full name, photo, and expiry date',
-        accept: '.pdf,.jpg,.jpeg,.png',
-      },
-      {
-        name: 'bankStatement',
-        label: 'Bank Statement (Minimum 3 Months)',
-        type: 'file',
-        required: true,
-        helper: 'Recent bank statements covering at least the last 3 months as proof of financial capability',
-        accept: '.pdf',
-        maxFileSizeMB: 10,
-      },
-      {
-        name: 'preMedTranscript',
-        label: 'Premedical / Bachelor / Undergraduate / 12th Grade Transcript',
-        type: 'file',
-        required: true,
-        helper:
-          "Official transcript from your most recent qualifying education — premedical, bachelor's degree, or 12th grade equivalent",
-        accept: '.pdf,.jpg,.jpeg,.png',
-      },
-      {
-        name: 'grade11Transcript',
-        label: '11th Grade Transcript',
-        type: 'file',
-        required: true,
-        helper: 'Official transcript from your 11th grade / secondary education',
-        accept: '.pdf,.jpg,.jpeg,.png',
-      },
-      {
-        name: 'otherProfessionalTranscripts',
-        label: 'Other professional transcripts / certifications / awards',
-        type: 'file',
-        helper:
-          'Transcripts from other professional or postgraduate programs, plus relevant certifications or awards (optional)',
-        accept: '.pdf,.jpg,.jpeg,.png',
-      },
-      {
-        name: 'cv',
-        label: 'CV / Resume',
-        type: 'file',
-        required: true,
-        helper: 'Your current curriculum vitae or resume highlighting education, experience, and achievements',
-        accept: '.pdf,.doc,.docx',
-        maxFileSizeMB: 10,
-      },
-      {
-        name: 'examResults',
-        label: 'Exam Results Marksheet (MCAT / NEET / UCAT)',
-        type: 'file',
-        helper: 'Score report or marksheet from any standardized medical entrance examination you have taken',
-        accept: '.pdf,.jpg,.jpeg,.png',
-      },
-      {
-        name: 'passportPhoto',
-        label: 'Passport-Size Photograph',
-        type: 'file',
-        required: true,
-        helper: 'Recent color photograph with white background, face clearly visible (35mm x 45mm standard)',
-        accept: '.jpg,.jpeg,.png',
-      },
+      ...dynamicDocFields,
     ],
   },
   {
@@ -1252,6 +1261,11 @@ export const applicationSteps = [
     ],
   },
 ]
+}
+
+export const applicationSteps = buildApplicationSteps({}, [], [])
+
+export { CATEGORY_KEYS }
 
 export function flattenFieldDefinitions() {
   const list = []

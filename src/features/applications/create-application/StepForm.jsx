@@ -326,11 +326,16 @@ function StepForm({
   }, [step.id])
 
   useEffect(() => {
-    // 4-year MD should not keep "Premedical Program" selected.
-    if (values.programType === '4year' && values.subProgram === 'premedical') {
+    // Clear subProgram if it's not valid for the currently selected program.
+    const academicStep = steps.find((s) => s.id === 'academicBackground')
+    const subProgramField = academicStep?.fields.find((f) => f.name === 'subProgram')
+    if (!subProgramField?.dynamicOptions || !values.programType) return
+    const validOptions = subProgramField.dynamicOptions[values.programType] ?? []
+    const validValues = validOptions.map((o) => (typeof o === 'string' ? o : o.value))
+    if (values.subProgram && !validValues.includes(values.subProgram)) {
       onChange('subProgram', '')
     }
-  }, [values.programType, values.subProgram, onChange])
+  }, [values.programType])
 
   const fileFieldStats = useMemo(() => {
     const fileFields = step.fields.filter(

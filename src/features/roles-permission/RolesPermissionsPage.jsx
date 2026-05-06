@@ -212,6 +212,16 @@ export function RolesPermissionsPage() {
     })
   }
 
+  function toggleColumn(key, checked) {
+    setAccountPermissionDraft((prev) => {
+      const next = { ...prev }
+      for (const m of permissionPopupModules) {
+        next[m.id] = { ...(next[m.id] || { create: false, read: false, update: false, delete: false }), [key]: checked }
+      }
+      return next
+    })
+  }
+
   async function saveAccountPermissions() {
     if (!accountPermissionsView) return
     const nextRow = Object.fromEntries(
@@ -749,22 +759,60 @@ export function RolesPermissionsPage() {
             <p className="text-sm text-[var(--color-text-muted)]">
               Role: <span className="font-semibold text-[var(--color-heading)]">{roleNameById(accountPermissionsView.roleId)}</span>
             </p>
-            {roleNameById(accountPermissionsView.roleId).trim().toLowerCase() === 'super admin' ? (
-              <div className="flex justify-end">
-                <Button type="button" variant="secondary" onClick={enableAllPermissions}>
-                  Check all permissions
-                </Button>
-              </div>
-            ) : null}
+            <div className="flex justify-end">
+              <Button type="button" variant="secondary" size="sm" onClick={enableAllPermissions}>
+                Check all permissions
+              </Button>
+            </div>
             <div className="overflow-x-auto rounded-xl border border-[#0A1628]/10">
               <table className="w-full min-w-[760px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-[#0A1628]/10 bg-[var(--color-bg)]">
                     <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Sidebar link</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Create</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Read</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Update</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Delete</th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                          title="Toggle Create for all"
+                          onChange={(e) => toggleColumn('create', e.target.checked)}
+                        />
+                        <span>Create</span>
+                      </div>
+                    </th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                          title="Toggle Read for all"
+                          onChange={(e) => toggleColumn('read', e.target.checked)}
+                        />
+                        <span>Read</span>
+                      </div>
+                    </th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                          title="Toggle Update for all"
+                          onChange={(e) => toggleColumn('update', e.target.checked)}
+                        />
+                        <span>Update</span>
+                      </div>
+                    </th>
+                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
+                          title="Toggle Delete for all"
+                          onChange={(e) => toggleColumn('delete', e.target.checked)}
+                        />
+                        <span>Delete</span>
+                      </div>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>

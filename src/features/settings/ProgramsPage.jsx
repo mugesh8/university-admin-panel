@@ -20,8 +20,11 @@ export function ProgramsPage() {
   const [code, setCode] = useState('')
   const [durationYears, setDurationYears] = useState(4)
   const [level, setLevel] = useState('')
+  const [description, setDescription] = useState('')
   const [capacity, setCapacity] = useState(0)
   const [active, setActive] = useState(true)
+  const [subPrograms, setSubPrograms] = useState([])
+  const [subProgramInput, setSubProgramInput] = useState('')
 
   function openAdd() {
     setEditingId(null)
@@ -29,8 +32,11 @@ export function ProgramsPage() {
     setCode('')
     setDurationYears(4)
     setLevel('')
+    setDescription('')
     setCapacity(0)
     setActive(true)
+    setSubPrograms([])
+    setSubProgramInput('')
     setFormOpen(true)
   }
 
@@ -40,8 +46,11 @@ export function ProgramsPage() {
     setCode(r.code)
     setDurationYears(r.durationYears)
     setLevel(r.level === '—' ? '' : r.level)
+    setDescription(r.description === '—' ? '' : (r.description ?? ''))
     setCapacity(r.capacity)
     setActive(Boolean(r.active))
+    setSubPrograms(Array.isArray(r.subPrograms) ? r.subPrograms : [])
+    setSubProgramInput('')
     setFormOpen(true)
   }
 
@@ -55,8 +64,10 @@ export function ProgramsPage() {
       code: c,
       durationYears: Math.max(0, Number(durationYears) || 0),
       level: level.trim() || '—',
+      description: description.trim() || '—',
       capacity: Math.max(0, Number(capacity) || 0),
       active,
+      subPrograms,
     }
     try {
       await saveProgram(editingId, row)
@@ -84,6 +95,7 @@ export function ProgramsPage() {
     { key: 'code', header: 'Code', sortable: true, sortType: 'string' },
     { key: 'durationYears', header: 'Duration (yrs)', sortable: true, sortType: 'number', numeric: true },
     { key: 'level', header: 'Level', sortable: true, sortType: 'string' },
+    { key: 'description', header: 'Description', sortable: false },
     { key: 'capacity', header: 'Capacity', sortable: true, sortType: 'number', numeric: true },
     {
       key: 'active',
@@ -172,6 +184,20 @@ export function ProgramsPage() {
               <dd className="mt-1">{viewRow.level}</dd>
             </div>
             <div>
+              <dt className="text-xs font-semibold uppercase text-[var(--color-text-muted)]">Description</dt>
+              <dd className="mt-1">{viewRow.description}</dd>
+            </div>
+            <div>
+              <dt className="text-xs font-semibold uppercase text-[var(--color-text-muted)]">Sub-Programs</dt>
+              <dd className="mt-1">
+                {Array.isArray(viewRow.subPrograms) && viewRow.subPrograms.length > 0
+                  ? viewRow.subPrograms.map((sp) => (
+                      <span key={sp} className="mr-1 mb-1 inline-block rounded-full bg-[#0A1628]/10 px-2 py-0.5 text-xs">{sp}</span>
+                    ))
+                  : <span className="text-[var(--color-text-muted)]">None</span>}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs font-semibold uppercase text-[var(--color-text-muted)]">Status</dt>
               <dd className="mt-1">
                 {viewRow.active ? <Badge tone="success">Active</Badge> : <Badge tone="warning">Inactive</Badge>}
@@ -210,6 +236,56 @@ export function ProgramsPage() {
               onChange={(e) => setDurationYears(Math.max(0, Number(e.target.value) || 0))}
             />
             <Input label="Level" value={level} onChange={(e) => setLevel(e.target.value)} />
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--color-heading)]">Sub-Programs</label>
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 rounded border border-[#0A1628]/25 px-3 py-2 text-sm text-[var(--color-heading)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                  placeholder="Type and press Enter to add"
+                  value={subProgramInput}
+                  onChange={(e) => setSubProgramInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      const v = subProgramInput.trim()
+                      if (v && !subPrograms.includes(v)) setSubPrograms((p) => [...p, v])
+                      setSubProgramInput('')
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  className="rounded border border-[#0A1628]/25 px-3 py-2 text-sm hover:bg-[#0A1628]/5"
+                  onClick={() => {
+                    const v = subProgramInput.trim()
+                    if (v && !subPrograms.includes(v)) setSubPrograms((p) => [...p, v])
+                    setSubProgramInput('')
+                  }}
+                >
+                  Add
+                </button>
+              </div>
+              {subPrograms.length > 0 && (
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {subPrograms.map((sp) => (
+                    <span key={sp} className="flex items-center gap-1 rounded-full bg-[#0A1628]/10 px-2 py-0.5 text-xs">
+                      {sp}
+                      <button type="button" className="ml-0.5 text-[#0A1628]/50 hover:text-red-600" onClick={() => setSubPrograms((p) => p.filter((x) => x !== sp))}>×</button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--color-heading)]">Description</label>
+              <textarea
+                className="w-full rounded border border-[#0A1628]/25 px-3 py-2 text-sm text-[var(--color-heading)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                rows={3}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="Optional description"
+              />
+            </div>
             <Input
               type="number"
               min={0}

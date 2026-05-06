@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { usePageTitleContext } from '../../context/PageTitleContext.jsx'
 import { Button } from '../../components/ui/Button.jsx'
-import { applicationSteps } from '../../lib/application-form/applicationSteps.js'
+import { applicationSteps, buildApplicationSteps, CATEGORY_KEYS } from '../../lib/application-form/applicationSteps.js'
 import { countries } from '../../lib/application-form/countries.js'
 import { getSelectValues, isFieldVisible } from '../../lib/application-form/formVisibility.js'
 import {
@@ -13,6 +13,7 @@ import {
 } from '../../lib/api/applicationsApi.js'
 import { usePersistentState } from '../../hooks/usePersistentState.js'
 import { useAuth } from '../auth/useAuth.js'
+import { useSettingsStore } from '../../hooks/useSettingsStore.js'
 import StepForm from './create-application/StepForm.jsx'
 
 const ADMIN_FORM_STORAGE_KEY = 'mucm-admin-application-form'
@@ -36,6 +37,7 @@ export function AdminCreateApplicationPage() {
   const navigate = useNavigate()
   const { user, token } = useAuth()
   const { setPageTitleOverride } = usePageTitleContext()
+  const { dropdownCategories, programs, documentRequirements } = useSettingsStore()
   const desktopScrollRef = useRef(null)
   const autoSaveTimerRef = useRef(null)
   const hasInitializedAutoSaveRef = useRef(false)
@@ -71,6 +73,27 @@ export function AdminCreateApplicationPage() {
     }
   }, [setActiveApplication, setCurrentStepIndex, setFormValues])
 
+  // Clear draft if user changed
+  useEffect(() => {
+    const lastUserEmail = window.localStorage.getItem('mucm-admin-last-user-email')
+    const currentEmail = user?.email
+    
+    if (currentEmail && lastUserEmail && currentEmail !== lastUserEmail) {
+      // User changed! Clear local storage drafts
+      window.localStorage.removeItem(ADMIN_FORM_STORAGE_KEY)
+      window.localStorage.removeItem(ADMIN_STEP_STORAGE_KEY)
+      window.localStorage.removeItem(ADMIN_ACTIVE_APPLICATION_KEY)
+      
+      setCurrentStepIndex(0)
+      setFormValues(initialForm)
+      setActiveApplication({ id: '', applicationId: '' })
+    }
+    
+    if (currentEmail) {
+      window.localStorage.setItem('mucm-admin-last-user-email', currentEmail)
+    }
+  }, [user, setCurrentStepIndex, setFormValues, setActiveApplication])
+
   useEffect(() => {
     setPageTitleOverride('New application')
     return () => setPageTitleOverride(null)
@@ -103,9 +126,46 @@ export function AdminCreateApplicationPage() {
     }
   }, [formValues, currentStepIndex, submitted])
 
+  // Build dynamic options map from dropdownCategories
+  const dynOptions = useMemo(() => {
+    const result = {}
+    for (const key of CATEGORY_KEYS) {
+      const found = dropdownCategories.find(
+        (c) => String(c.category ?? '').toLowerCase().trim() === key.toLowerCase(),
+      )
+      result[key] = found?.options ?? []
+    }
+    return result
+  }, [dropdownCategories])
+
+  useEffect(() => {
+    if (!user?.userId || !token) return
+    const isFormMostlyEmpty = Object.values(formValues).every((v) => !v || v === '' || v === false)
+    if (!isFormMostlyEmpty || activeApplication.id) return
+
+    const restoreDraft = async () => {
+      try {
+        const response = await requestApplicationApi('GET', `?status=draft&limit=1&created_by=${user.userId}`)
+        if (response.success && response.data?.length > 0) {
+          const draft = response.data[0]
+          const full = await fetchApplicationFullById(draft.id)
+          const mapped = mapBackendToFormValues(full)
+          setFormValues(mapped)
+          setCurrentStepIndex(Math.max(0, (full.completed_steps || 1) - 1))
+          setActiveApplication({ id: String(full.id), applicationId: String(full.application_id) })
+        }
+      } catch (err) {
+        console.error('Auto-restore draft failed:', err)
+      }
+    }
+    restoreDraft()
+  }, [user?.userId, token])
+
+  const dynamicSteps = useMemo(() => buildApplicationSteps(dynOptions, programs, documentRequirements), [dynOptions, programs, documentRequirements])
+
   const currentStep = useMemo(
-    () => applicationSteps[currentStepIndex] ?? applicationSteps[0],
-    [currentStepIndex],
+    () => dynamicSteps[currentStepIndex] ?? dynamicSteps[0],
+    [currentStepIndex, dynamicSteps],
   )
 
   function getAuthHeader() {
@@ -161,12 +221,194 @@ export function AdminCreateApplicationPage() {
   }
 
   function normalizeText(value) {
-    if (value === undefined || value === null) return null
+    if (value === undefined || value === null) return ''
     if (typeof value === 'string') {
       const trimmed = value.trim()
-      return trimmed === '' ? null : trimmed
+      return trimmed === '' ? '' : trimmed
     }
     return value
+  }
+
+  function mapBackendToFormValues(data) {
+    const pd = data.personal_details || {}
+    const pg = data.parent_guardian_info || {}
+    const ep = data.english_proficiency || {}
+    const st = (data.standardized_tests || [])[0] || {}
+    const ads = data.admission_sought || {}
+    const dis = data.disclosure || {}
+    const fs = data.financial_support || {}
+    const ec = (data.emergency_contacts || [])[0] || {}
+
+    const form = { ...initialForm }
+
+    // Personal Details
+    form.title = pd.title || ''
+    form.firstName = pd.first_name || ''
+    form.middleName = pd.middle_name || ''
+    form.surname = pd.surname || ''
+    form.preferredName = pd.preferred_name || ''
+    form.pronouns = pd.pronouns || ''
+    form.dateOfBirth = pd.date_of_birth || ''
+    form.gender = pd.gender || ''
+    form.nameChanged = pd.name_change || ''
+    form.ethnicity = pd.ethnicity_race || ''
+    form.citizenship = pd.nationality_citizenship || ''
+    form.countryOfResidence = pd.country_of_residence || ''
+    form.passportNumber = pd.passport_number || ''
+    form.passportExpiry = pd.passport_expiry_date || ''
+    form.visaStatus = pd.visa_immigration_status || ''
+    form.email = pd.email || ''
+    form.phoneMobile = pd.mobile_phone || ''
+    form.phoneHome = pd.home_phone || ''
+    form.permanentAddress = pd.street_address || ''
+    form.city = pd.city || ''
+    form.stateProvince = pd.state_province || ''
+    form.postalCode = pd.postal_code || ''
+    form.country = pd.country || ''
+    form.sameAsPermanent = pd.mailing_same_as_permanent ?? true
+    form.mailingAddress = pd.mailing_street_address || ''
+    form.mailingCity = pd.mailing_city || ''
+    form.mailingStateProvince = pd.mailing_state_province || ''
+    form.mailingPostalCode = pd.mailing_postal_code || ''
+    form.mailingCountry = pd.mailing_country || ''
+
+    // Emergency Contact
+    form.contactName = ec.full_name || ''
+    form.relationship = ec.relationship || ''
+    form.contactPhone = ec.phone || ''
+    form.contactEmail = ec.email || ''
+    form.contactCountry = ec.country || ''
+    form.contactAddress = ec.home_address || ''
+
+    // Parent/Guardian
+    form.fatherName = pg.father_name || ''
+    form.fatherOccupation = pg.father_occupation || ''
+    form.fatherEmail = pg.father_email || ''
+    form.fatherPhone = pg.father_phone || ''
+    form.motherName = pg.mother_name || ''
+    form.motherOccupation = pg.mother_occupation || ''
+    form.motherEmail = pg.mother_email || ''
+    form.motherPhone = pg.mother_phone || ''
+
+    // Education
+    form.educationEntries = (data.academic_institutions || []).map((item) => ({
+      institution: item.institution || '',
+      address: item.address || '',
+      country: item.country || '',
+      startDate: item.startDate || '',
+      endDate: item.endDate || '',
+      degree: item.degree || '',
+      fieldOfStudy: item.fieldOfStudy || '',
+      gpa: item.gpa || '',
+    }))
+
+    // English
+    form.englishProficiency = ep.proficiency_level || ''
+    form.otherLanguagesSpoken = ep.other_languages_spoken || ''
+    form.englishTestType = ep.test_type || ''
+    form.englishTestScore = ep.test_score || ''
+
+    // Standardized Tests
+    form.hasStandardizedTest = st.is_taken ? 'Yes' : 'No'
+    form.standardizedTestType = st.test_type || ''
+    form.standardizedTestScore = st.score || ''
+
+    // Admission Sought
+    form.programType = ads.program_type || ''
+    form.subProgram = ads.sub_program || ''
+    form.semester = ads.preferred_semester || ''
+    form.year = ads.preferred_year ? String(ads.preferred_year) : ''
+
+    // Disclosures
+    form.hasBeenDisciplined = dis.discipline_action ? 'Yes' : 'No'
+    form.disciplineActionExplanation = dis.discipline_explanation || ''
+    form.hasBeenConvicted = dis.criminal_conviction ? 'Yes' : 'No'
+    form.convictionExplanation = dis.conviction_explanation || ''
+    form.hasDisability = dis.disability ? 'Yes' : 'No'
+    form.disabilityDetails = dis.disability_details || ''
+    form.requiresAccommodation = dis.special_accomadations ? 'Yes' : 'No'
+    form.accommodationDetails = dis.accommodation_details || ''
+    form.howHeard = dis.referral_source || ''
+    form.howHeardOther = dis.referral_source_other || ''
+    form.referralDescription = dis.referral_description || ''
+
+    // Experiences
+    form.experiences = (data.experiences || []).map((item) => ({
+      type: item.experience_type || '',
+      role: item.role_position || '',
+      organization: item.organization || '',
+      hoursPerWeek: item.hours_per_week || '',
+      startDate: item.start_date || '',
+      endDate: item.end_date || '',
+      description: item.description || '',
+    }))
+    if (form.experiences.length > 0) {
+      const first = data.experiences[0]
+      form.whyMedicine = first.why_medicine || ''
+      form.whyMUCM = first.why_mucm || ''
+      form.personalStatement = first.per_statement_essay || ''
+    } else {
+      form.whyMedicine = data.why_medicine || ''
+      form.whyMUCM = data.why_mucm || ''
+      form.personalStatement = data.personal_statement || ''
+    }
+
+    // Documents
+    const docs = data.document || {}
+    form.passport = docs.passport || ''
+    form.bankStatement = docs.bank_statement || ''
+    form.preMedTranscript = docs.premedical_Bachelor_ug_HSC_Certificate || ''
+    form.grade11Transcript = docs.Secondary_11grade || ''
+    form.cv = docs.cv_resume || ''
+    form.passportPhoto = docs.passport_photo || ''
+    form.otherProfessionalTranscripts = docs.other_professional_transcripts || ''
+    form.examResults = docs.exam_results_marksheet || ''
+    form.sponsorSignedFinancialForm = docs.sponsor_signed_financial_form || ''
+
+    // Financial Support
+    form.studentName = fs.student_full_name || ''
+    form.studentId = fs.student_id || ''
+    form.programOfStudy = fs.program_of_study || ''
+    form.expectedStartDate = fs.expected_start_date || ''
+    form.paymentOption = fs.paymentOption || ''
+    form.selfFundedSource = fs.selfFundedSource || ''
+    form.sponsorFullName = fs.sponsor_full_name || ''
+    form.sponsorRelationship = fs.sponsorRelationship || ''
+    form.sponsorOccupation = fs.occupation || ''
+    form.sponsorEmployer = fs.sponsorEmployer || ''
+    form.sponsorAddress = fs.sponsorAddress || ''
+    form.sponsorCity = fs.sponsor_city || ''
+    form.sponsorState = fs.sponsor_state || ''
+    form.sponsorPostalCode = fs.sponsorPostalCode || ''
+    form.sponsorCountry = fs.sponsor_country || ''
+    form.sponsorPhone = fs.sponsor_phone || ''
+    form.sponsorEmail = fs.sponsor_email || ''
+    form.orgName = fs.orgName || ''
+    form.orgContactPerson = fs.org_contact_person || ''
+    form.orgContactTitle = fs.orgContactTitle || ''
+    form.orgAddress = fs.orgAddress || ''
+    form.orgCity = fs.org_city || ''
+    form.orgState = fs.org_state || ''
+    form.orgPostalCode = fs.orgPostalCode || ''
+    form.orgCountry = fs.org_country || ''
+    form.orgPhone = fs.org_phone || ''
+    form.orgEmail = fs.org_email || ''
+    form.hasBankStatement = Boolean(fs.hasBankStatement)
+    form.hasIncomeProof = Boolean(fs.hasIncomeProof)
+    form.hasSponsorLetter = Boolean(fs.hasSponsorLetter)
+    form.hasScholarshipLetter = Boolean(fs.hasScholarshipLetter)
+    form.hasLoanApproval = Boolean(fs.hasLoanApproval)
+    form.certifyAccurate = Boolean(fs.certifyAccurate)
+    form.certifyFinancialResponsibility = Boolean(fs.certifyFinancialResponsibility)
+    form.certifyDate = fs.certifyDate || ''
+    form.sponsorCertifySupport = Boolean(fs.sponsorCertifySupport)
+    form.sponsorCertifyDate = fs.sponsorCertifyDate || ''
+    form.studentSignatureMethod = fs.studentSignatureMethod || ''
+    form.studentSignatureTyped = fs.studentSignatureTyped || ''
+    form.studentSignatureUpload = fs.studentSignatureUpload || ''
+    form.applicationAgreement = Boolean(data.application_agreement_accepted)
+
+    return form
   }
 
   function yesNoToBoolean(value) {
@@ -483,6 +725,8 @@ export function AdminCreateApplicationPage() {
       personal_statement: formValues.personalStatement || undefined,
       application_agreement_accepted: Boolean(formValues.applicationAgreement),
       application_agreement_at: formValues.applicationAgreement ? new Date().toISOString() : undefined,
+      created_by: user?.userId || undefined,
+      updated_by: user?.userId || undefined,
     }
   }
 
@@ -531,12 +775,21 @@ export function AdminCreateApplicationPage() {
       }
     }
 
-    const updated = await updateApplication(existingId, payload, {
-      token,
-      preferredPrefix: applicationsPrefixRef.current,
-    })
-    applicationsPrefixRef.current = updated.preferredPrefix
-    return { ...activeApplication, id: String(existingId) }
+    try {
+      const updated = await updateApplication(existingId, payload, {
+        token,
+        preferredPrefix: applicationsPrefixRef.current,
+      })
+      applicationsPrefixRef.current = updated.preferredPrefix
+      return { ...activeApplication, id: String(existingId) }
+    } catch (error) {
+      if (error.message?.includes('not found') || error.message?.includes('404')) {
+        // ID is stale (probably DB was reset), clear it and retry as a create
+        setActiveApplication({ id: '', applicationId: activeApplication.applicationId })
+        return persistApplication({ stepIndex, isComplete })
+      }
+      throw error
+    }
   }
 
   function validateField(field, value) {
@@ -695,7 +948,7 @@ export function AdminCreateApplicationPage() {
       }
 
       const activeField =
-        applicationSteps.flatMap((step) => step.fields).find((field) => field.name === name) ?? null
+        dynamicSteps.flatMap((step) => step.fields).find((field) => field.name === name) ?? null
 
       const mergedValues = { ...formValues, [name]: value }
       if (activeField?.type === 'repeatable') {
@@ -730,7 +983,7 @@ export function AdminCreateApplicationPage() {
     }
     setValidationErrors({})
     setFormError('')
-    const nextStepIndex = Math.min(currentStepIndex + 1, applicationSteps.length - 1)
+    const nextStepIndex = Math.min(currentStepIndex + 1, dynamicSteps.length - 1)
     try {
       window.localStorage.setItem(ADMIN_FORM_STORAGE_KEY, JSON.stringify(formValues))
       window.localStorage.setItem(ADMIN_STEP_STORAGE_KEY, JSON.stringify(nextStepIndex))
@@ -752,7 +1005,7 @@ export function AdminCreateApplicationPage() {
   }
 
   function handleStepClick(targetIndex) {
-    const safeTarget = Math.max(0, Math.min(targetIndex, applicationSteps.length - 1))
+    const safeTarget = Math.max(0, Math.min(targetIndex, dynamicSteps.length - 1))
     if (safeTarget <= currentStepIndex) {
       setFormError('')
       setCurrentStepIndex(safeTarget)
@@ -762,7 +1015,7 @@ export function AdminCreateApplicationPage() {
     let firstInvalidStep = -1
     const accumulatedErrors = {}
     for (let stepIndex = 0; stepIndex < safeTarget; stepIndex += 1) {
-      const stepErrors = validateStep(applicationSteps[stepIndex], formValues)
+      const stepErrors = validateStep(dynamicSteps[stepIndex], formValues)
       if (Object.keys(stepErrors).length > 0) {
         if (firstInvalidStep === -1) firstInvalidStep = stepIndex
         Object.assign(accumulatedErrors, stepErrors)
@@ -801,7 +1054,7 @@ export function AdminCreateApplicationPage() {
   async function handleSubmit() {
     let firstInvalidStep = -1
     const allErrors = {}
-    applicationSteps.forEach((step, stepIndex) => {
+    dynamicSteps.forEach((step, stepIndex) => {
       const stepErrors = validateStep(step, formValues)
       if (Object.keys(stepErrors).length > 0 && firstInvalidStep === -1) {
         firstInvalidStep = stepIndex
@@ -823,7 +1076,7 @@ export function AdminCreateApplicationPage() {
     let persistedApplicationMeta = activeApplication
     try {
       persistedApplicationMeta = await persistApplication({
-        stepIndex: applicationSteps.length - 1,
+        stepIndex: dynamicSteps.length - 1,
         isComplete: true,
       })
       await syncApplicationSections(persistedApplicationMeta.id)
@@ -833,7 +1086,7 @@ export function AdminCreateApplicationPage() {
     }
 
     const documentFields =
-      applicationSteps.find((step) => step.id === 'documents')?.fields.filter((f) => f.type === 'file') ?? []
+      dynamicSteps.find((step) => step.id === 'documents')?.fields.filter((f) => f.type === 'file') ?? []
     const applicationId = persistedApplicationMeta.applicationId || `APP-${Date.now()}`
     const submittedAt = new Date().toISOString()
     const snapshot =
@@ -943,8 +1196,8 @@ export function AdminCreateApplicationPage() {
         <StepForm
           step={currentStep}
           stepNumber={currentStepIndex + 1}
-          totalSteps={applicationSteps.length}
-          steps={applicationSteps}
+          totalSteps={dynamicSteps.length}
+          steps={dynamicSteps}
           currentIndex={currentStepIndex}
           onStepClick={handleStepClick}
           values={formValues}
@@ -956,7 +1209,7 @@ export function AdminCreateApplicationPage() {
           onPrevious={handlePrevious}
           onSaveDraft={handleSaveDraft}
           canGoBack={currentStepIndex > 0}
-          isLastStep={currentStepIndex === applicationSteps.length - 1}
+          isLastStep={currentStepIndex === dynamicSteps.length - 1}
           onSubmit={handleSubmit}
         />
       </div>

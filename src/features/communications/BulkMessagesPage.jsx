@@ -1,191 +1,276 @@
 import { useMemo, useState } from 'react'
-import { Megaphone, PieChart, Users } from 'lucide-react'
+import { CheckCircle2, Megaphone, PieChart, RefreshCw, Users, XCircle } from 'lucide-react'
 import { PageHeader } from '../../components/ui/PageHeader.jsx'
 import { Card, CardHeader } from '../../components/ui/Card.jsx'
 import { Button } from '../../components/ui/Button.jsx'
 import { Select } from '../../components/ui/Select.jsx'
+import { Input } from '../../components/ui/Input.jsx'
 import { Badge } from '../../components/ui/Badge.jsx'
-import { DataTable } from '../../components/ui/DataTable.jsx'
 import { KpiCard } from '../../components/ui/KpiCard.jsx'
-import { applications } from '../../lib/mock-data/applications.js'
-import { bulkMessageCampaigns } from '../../lib/mock-data/scaffold.js'
 import { useEmailTemplatesStore } from '../../hooks/useEmailTemplatesStore.js'
+import { useAuth } from '../auth/useAuth.js'
+import { sendBrevoEmailBulk } from '../../lib/api/brevoApi.js'
 
-function formatDateTime(iso) {
-  if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
-  } catch {
-    return iso
-  }
-}
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  Helpers                                                                    */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+const STATUS_OPTIONS = [
+  'Applied',
+  'Under Review',
+  'Interview Scheduled',
+  'Interview Completed',
+  'Offer Made',
+  'Enrolled',
+  'Rejected',
+  'Withdrawn',
+]
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/*  Component                                                                  */
+/* ─────────────────────────────────────────────────────────────────────────── */
 
 export function BulkMessagesPage() {
-  const { templates: emailTemplates } = useEmailTemplatesStore()
-  const [program, setProgram] = useState('')
-  const [intake, setIntake] = useState('')
+  const { token } = useAuth()
+  const { templates: emailTemplates, loading: templatesLoading, isBrevoMode } = useEmailTemplatesStore()
+  const activeTemplates = useMemo(() => emailTemplates.filter((t) => t.active), [emailTemplates])
+
+  const [programId, setProgramId] = useState('')
+  const [intakeId, setIntakeId] = useState('')
   const [status, setStatus] = useState('')
   const [templateId, setTemplateId] = useState('')
 
-  const programs = useMemo(() => [...new Set(applications.map((a) => a.program))].sort(), [])
-  const intakes = useMemo(() => [...new Set(applications.map((a) => a.intake))].sort(), [])
-  const statuses = useMemo(() => [...new Set(applications.map((a) => a.status))].sort(), [])
-  const activeTemplates = useMemo(() => emailTemplates.filter((t) => t.active), [emailTemplates])
+  const [dryRunLoading, setDryRunLoading] = useState(false)
+  const [dryRunResult, setDryRunResult] = useState(null) // { audienceCount }
+  const [sending, setSending] = useState(false)
+  const [sendResult, setSendResult] = useState(null) // { ok, message, detail }
 
-  const audienceCount = useMemo(() => {
-    return applications.filter((a) => {
-      if (program && a.program !== program) return false
-      if (intake && a.intake !== intake) return false
-      if (status && a.status !== status) return false
-      return true
-    }).length
-  }, [program, intake, status])
+  const selectedTemplate = useMemo(
+    () => emailTemplates.find((t) => String(t.id) === String(templateId)) ?? null,
+    [emailTemplates, templateId],
+  )
 
-  const lastRun = bulkMessageCampaigns[0]
-  const totalSent = bulkMessageCampaigns.reduce((acc, c) => acc + c.sent, 0)
+  async function handleDryRun() {
+    if (!templateId) return
+    setDryRunLoading(true)
+    setDryRunResult(null)
+    setSendResult(null)
+    try {
+      const data = await sendBrevoEmailBulk(token, {
+        template_id: selectedTemplate?.brevoId || Number(templateId),
+        program_id: programId || undefined,
+        intake_id: intakeId || undefined,
+        status: status || undefined,
+        dry_run: true,
+      })
+      setDryRunResult({ audienceCount: data.audienceCount ?? 0 })
+    } catch (err) {
+      setSendResult({ ok: false, message: err.message || 'Dry run failed' })
+    } finally {
+      setDryRunLoading(false)
+    }
+  }
 
-  const columns = [
-    {
-      key: 'label',
-      header: 'Campaign',
-      sortable: true,
-      sortType: 'string',
-      render: (c) => (
-        <div>
-          <p className="font-medium text-[var(--color-heading)]">{c.label}</p>
-          <p className="text-xs text-[var(--color-text-muted)]">{c.filtersSummary}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'templateName',
-      header: 'Template',
-      sortable: true,
-      sortType: 'string',
-    },
-    {
-      key: 'sentAt',
-      header: 'Sent',
-      sortable: true,
-      sortType: 'date',
-      sortValue: (c) => c.sentAt,
-      render: (c) => <span className="tabular-nums text-sm">{formatDateTime(c.sentAt)}</span>,
-    },
-    { key: 'sender', header: 'Sender', sortable: true, sortType: 'string' },
-    {
-      key: 'recipients',
-      header: 'Audience',
-      sortable: true,
-      sortType: 'number',
-      numeric: true,
-    },
-    {
-      key: 'delivered',
-      header: 'Delivered',
-      sortable: true,
-      sortType: 'number',
-      numeric: true,
-    },
-    {
-      key: 'opened',
-      header: 'Opened',
-      sortable: true,
-      sortType: 'number',
-      numeric: true,
-    },
-    {
-      key: 'bounced',
-      header: 'Bounced',
-      sortable: true,
-      sortType: 'number',
-      numeric: true,
-      render: (c) => (
-        <Badge tone={c.bounced > 0 ? 'warning' : 'success'}>{c.bounced}</Badge>
-      ),
-    },
-  ]
+  async function handleBulkSend(e) {
+    e.preventDefault()
+    if (!templateId || sending) return
+    if (!selectedTemplate?.isBrevoTemplate) {
+      setSendResult({ ok: false, message: 'Please select a Brevo template to send bulk emails.' })
+      return
+    }
+
+    setSending(true)
+    setSendResult(null)
+
+    try {
+      const data = await sendBrevoEmailBulk(token, {
+        template_id: selectedTemplate.brevoId,
+        program_id: programId || undefined,
+        intake_id: intakeId || undefined,
+        status: status || undefined,
+        dry_run: false,
+      })
+
+      setSendResult({
+        ok: true,
+        message: `Bulk send complete!`,
+        detail: `${data.sent ?? 0} sent, ${data.failed ?? 0} failed out of ${data.audienceCount ?? 0} recipients.`,
+      })
+      setDryRunResult(null)
+    } catch (err) {
+      setSendResult({ ok: false, message: err.message || 'Bulk send failed' })
+    } finally {
+      setSending(false)
+    }
+  }
 
   return (
     <div>
       <PageHeader
         actions={
-          <Button type="button" variant="secondary">
+          <Button type="button" variant="secondary" disabled>
             Export CSV (log)
           </Button>
         }
       />
 
+      {/* KPI row */}
       <div className="mb-4 grid gap-3 sm:grid-cols-3">
-        <KpiCard compact title="Audience (current filters)" subtitle="Live estimate" value={String(audienceCount)} />
         <KpiCard
           compact
-          title="Bulk sends (demo)"
-          subtitle="All campaigns"
-          value={String(bulkMessageCampaigns.length)}
+          title="Active Brevo templates"
+          subtitle="Ready to send"
+          value={String(activeTemplates.length)}
         />
-        <KpiCard compact title="Messages dispatched" subtitle="Sum of sent counts" value={String(totalSent)} />
+        <KpiCard
+          compact
+          title="Delivery engine"
+          subtitle="Email provider"
+          value={isBrevoMode ? 'Brevo' : 'Demo'}
+        />
+        <KpiCard
+          compact
+          title="Dry-run audience"
+          subtitle="Last estimate"
+          value={dryRunResult ? String(dryRunResult.audienceCount) : '—'}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
+        {/* Bulk composer */}
         <Card>
           <CardHeader
             title="Bulk composer"
             actions={
-              <Badge tone="info">
-                <Users className="mr-1 inline h-3.5 w-3.5" aria-hidden />
-                {audienceCount} recipients
-              </Badge>
+              selectedTemplate ? (
+                <Badge tone="info">
+                  <Users className="mr-1 inline h-3.5 w-3.5" aria-hidden />
+                  {selectedTemplate.name}
+                </Badge>
+              ) : null
             }
           />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Select label="Program" value={program} onChange={(e) => setProgram(e.target.value)}>
-              <option value="">Any program</option>
-              {programs.map((p) => (
-                <option key={p} value={p}>
-                  {p}
-                </option>
-              ))}
-            </Select>
-            <Select label="Intake" value={intake} onChange={(e) => setIntake(e.target.value)}>
-              <option value="">Any intake</option>
-              {intakes.map((i) => (
-                <option key={i} value={i}>
-                  {i}
-                </option>
-              ))}
-            </Select>
-            <Select label="Pipeline status" value={status} onChange={(e) => setStatus(e.target.value)}>
-              <option value="">Any status</option>
-              {statuses.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </Select>
-            <Select label="Template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-              <option value="">Select template…</option>
-              {activeTemplates.map((t) => (
-                <option key={t.id} value={t.id}>
-                  {t.name}
-                </option>
-              ))}
-            </Select>
-          </div>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button type="button" variant="secondary">
-              Preview with sample merge
-            </Button>
-            <Button type="button">
-              <Megaphone className="h-4 w-4" aria-hidden />
-              Queue & send
-            </Button>
-          </div>
-          <p className="mt-3 text-xs text-[var(--color-text-muted)]">
-            Production sends enqueue a job per recipient, write to the communication log, and surface SendGrid / SES
-            events (delivered, opened, bounced) for audit.
-          </p>
+
+          {!isBrevoMode && (
+            <div className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700 ring-1 ring-amber-200">
+              Demo mode — bulk sends require a real admin account connected to Brevo.
+            </div>
+          )}
+
+          <form onSubmit={handleBulkSend} className="space-y-4">
+            {/* Audience filters */}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                Audience filters
+              </p>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  label="Program ID (optional)"
+                  value={programId}
+                  onChange={(e) => setProgramId(e.target.value)}
+                  placeholder="Leave blank for all programs"
+                />
+                <Input
+                  label="Intake ID (optional)"
+                  value={intakeId}
+                  onChange={(e) => setIntakeId(e.target.value)}
+                  placeholder="Leave blank for all intakes"
+                />
+              </div>
+              <div className="mt-3">
+                <Select label="Pipeline status" value={status} onChange={(e) => setStatus(e.target.value)}>
+                  <option value="">Any status</option>
+                  {STATUS_OPTIONS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
+
+            {/* Template selector */}
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                Brevo template
+              </p>
+              <Select label="Template" value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
+                <option value="">Select a template…</option>
+                {templatesLoading ? (
+                  <option disabled>Loading templates…</option>
+                ) : (
+                  activeTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                      {t.isBrevoTemplate ? ` (Brevo #${t.brevoId})` : ''}
+                    </option>
+                  ))
+                )}
+              </Select>
+            </div>
+
+            {/* Result / dry-run banner */}
+            {(sendResult || dryRunResult) && (
+              <div
+                className={`flex items-start gap-3 rounded-xl px-4 py-3 text-sm ring-1 ${
+                  sendResult?.ok === false
+                    ? 'bg-red-50 text-red-800 ring-red-200'
+                    : dryRunResult
+                      ? 'bg-sky-50 text-sky-800 ring-sky-200'
+                      : 'bg-emerald-50 text-emerald-800 ring-emerald-200'
+                }`}
+              >
+                {sendResult?.ok === false ? (
+                  <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                ) : (
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                )}
+                <div>
+                  <p className="font-semibold">
+                    {sendResult
+                      ? sendResult.message
+                      : `Dry run: ${dryRunResult.audienceCount} recipient${dryRunResult.audienceCount !== 1 ? 's' : ''} match your filters`}
+                  </p>
+                  {sendResult?.detail && <p className="mt-0.5 text-xs opacity-80">{sendResult.detail}</p>}
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-2 pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleDryRun}
+                disabled={!templateId || dryRunLoading || sending || !isBrevoMode}
+              >
+                {dryRunLoading ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Users className="h-4 w-4" aria-hidden />
+                )}
+                {dryRunLoading ? 'Estimating…' : 'Preview audience'}
+              </Button>
+              <Button
+                type="submit"
+                disabled={!templateId || sending || dryRunLoading || !isBrevoMode || !selectedTemplate?.isBrevoTemplate}
+              >
+                {sending ? (
+                  <RefreshCw className="h-4 w-4 animate-spin" aria-hidden />
+                ) : (
+                  <Megaphone className="h-4 w-4" aria-hidden />
+                )}
+                {sending ? 'Sending…' : 'Send bulk email'}
+              </Button>
+            </div>
+
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Each matched applicant receives an individual email via Brevo with merge fields resolved per recipient.
+              Use &quot;Preview audience&quot; to check the count before sending.
+            </p>
+          </form>
         </Card>
 
+        {/* Delivery info */}
         <Card className="border-[#0A1628]/10 bg-[#f8fafc]">
           <CardHeader
             title="Delivery & audit"
@@ -195,42 +280,44 @@ export function BulkMessagesPage() {
             <li className="flex gap-2">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-emerald-500" aria-hidden />
               <span>
-                <span className="font-medium text-[var(--color-heading)]">Sent / delivered / opened / bounced</span>{' '}
+                <span className="font-medium text-[var(--color-heading)]">Brevo delivery</span>{' '}
                 <span className="text-[var(--color-text-muted)]">
-                  — statuses appear in the Communication log tab; bulk runs aggregate counts below.
+                  — emails are dispatched individually via Brevo's transactional API with per-recipient merge params.
                 </span>
               </span>
             </li>
             <li className="flex gap-2">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-sky-500" aria-hidden />
               <span>
-                <span className="font-medium text-[var(--color-heading)]">No personal inboxes</span>{' '}
+                <span className="font-medium text-[var(--color-heading)]">Merge fields</span>{' '}
                 <span className="text-[var(--color-text-muted)]">
-                  — all mail is issued from platform-connected accounts for compliance.
+                  — applicant name, program, intake, application ID and pipeline stage are passed as{' '}
+                  <code className="rounded bg-[var(--color-bg)] px-1 font-mono">{'{{params.xxx}}'}</code> variables.
                 </span>
               </span>
             </li>
             <li className="flex gap-2">
               <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-amber-500" aria-hidden />
               <span>
-                <span className="font-medium text-[var(--color-heading)]">Latest scheduled send</span>{' '}
-                <span className="text-[var(--color-text-muted)]">{lastRun ? formatDateTime(lastRun.sentAt) : '—'}</span>
+                <span className="font-medium text-[var(--color-heading)]">Brevo tracking</span>{' '}
+                <span className="text-[var(--color-text-muted)]">
+                  — delivery, open, click & bounce events are tracked in your Brevo dashboard automatically.
+                </span>
+              </span>
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" aria-hidden />
+              <span>
+                <span className="font-medium text-[var(--color-heading)]">Template design</span>{' '}
+                <span className="text-[var(--color-text-muted)]">
+                  — edit HTML/CSS templates directly in Brevo and click{' '}
+                  <strong>Refresh</strong> on the Templates page to sync changes here.
+                </span>
               </span>
             </li>
           </ul>
         </Card>
       </div>
-
-      <Card className="mt-6">
-        <CardHeader title="Recent bulk campaigns" />
-        <DataTable
-          columns={columns}
-          rows={bulkMessageCampaigns.map((c) => ({ ...c, rowKey: c.id }))}
-          getRowKey={(r) => r.rowKey}
-          pageSize={6}
-          emptyMessage="No bulk campaigns recorded."
-        />
-      </Card>
     </div>
   )
 }

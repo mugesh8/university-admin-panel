@@ -187,8 +187,10 @@ function useSettingsStoreImpl() {
           code: row.code.trim(),
           durationYears: Math.max(0, Number(row.durationYears) || 0),
           level: !lv || lv === '—' ? null : lv,
+          description: row.description != null && row.description !== '—' ? String(row.description).trim() || null : null,
           capacity: Math.max(0, Number(row.capacity) || 0),
           active: row.active !== false,
+          subPrograms: Array.isArray(row.subPrograms) ? row.subPrograms : [],
         }
         if (editingId) await settingsApi.updateProgram(editingId, payload, token)
         else await settingsApi.createProgram(payload, token)
