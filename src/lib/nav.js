@@ -11,15 +11,15 @@ import {
 } from 'lucide-react'
 
 export const sidebarNav = [
-  { type: 'link', to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { type: 'link', to: '/applications', label: 'Applications', icon: FileText },
-  { type: 'link', to: '/communications', label: 'Communications', icon: Mail },
-  { type: 'link', to: '/reports', label: 'Reports', icon: BarChart3 },
-  { type: 'link', to: '/announcements', label: 'Announcements', icon: Megaphone },
-  { type: 'link', to: '/faq', label: 'FAQ', icon: HelpCircle },
-  { type: 'link', to: '/support-tickets', label: 'Support tickets', icon: LifeBuoy },
-  { type: 'link', to: '/roles-permissions', label: 'Roles & permissions', icon: Shield },
-  { type: 'link', to: '/settings', label: 'Settings', icon: Settings },
+  { type: 'link', to: '/dashboard', label: 'Dashboard', icon: LayoutDashboard, moduleId: 'dashboard' },
+  { type: 'link', to: '/applications', label: 'Applications', icon: FileText, moduleId: 'applications' },
+  { type: 'link', to: '/communications', label: 'Communications', icon: Mail, moduleId: 'communications' },
+  { type: 'link', to: '/reports', label: 'Reports', icon: BarChart3, moduleId: 'reports' },
+  { type: 'link', to: '/announcements', label: 'Announcements', icon: Megaphone, moduleId: 'announcements' },
+  { type: 'link', to: '/faq', label: 'FAQ', icon: HelpCircle, moduleId: 'faq' },
+  { type: 'link', to: '/support-tickets', label: 'Support tickets', icon: LifeBuoy, moduleId: 'support_tickets' },
+  { type: 'link', to: '/roles-permissions', label: 'Roles & permissions', icon: Shield, moduleId: 'roles_permissions' },
+  { type: 'link', to: '/settings', label: 'Settings', icon: Settings, moduleId: 'settings' },
 ]
 
 export const routeTitles = {

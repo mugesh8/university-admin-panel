@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../env.js'
+import { actionFromMethod, assertApiPermission } from './permissionGuard.js'
 
 const DEFAULT_APPLICATION_PREFIX = '/api/v1/applications'
 const APPLICATION_PREFIX_CANDIDATES = [
@@ -22,6 +23,7 @@ function authHeaders(token) {
 }
 
 async function requestAcrossPrefixes({ method, path, payload, token, preferredPrefix }) {
+  assertApiPermission('applications', actionFromMethod(method))
   if (!API_BASE_URL) {
     throw new Error('Set VITE_API_BASE_URL to your MUCM API (e.g. http://localhost:3000).')
   }
@@ -81,6 +83,7 @@ export async function updateApplication(applicationRowId, payload, options = {})
 }
 
 export async function fetchApplicationByApplicationId(applicationId, options = {}) {
+  assertApiPermission('applications', 'read')
   if (!API_BASE_URL) {
     throw new Error('Set VITE_API_BASE_URL to your MUCM API (e.g. http://localhost:3000).')
   }
@@ -141,6 +144,7 @@ export async function listApplications(options = {}) {
 }
 
 export async function fetchApplicationByRowId(applicationRowId, options = {}) {
+  assertApiPermission('applications', 'read')
   if (!API_BASE_URL) {
     throw new Error('Set VITE_API_BASE_URL to your MUCM API (e.g. http://localhost:3000).')
   }

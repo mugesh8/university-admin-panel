@@ -11,16 +11,21 @@ import {
   fetchApplicationByApplicationId as fetchApplicationByApplicationIdApi,
   updateApplication,
 } from '../../lib/api/applicationsApi.js'
+import { saveAdminDraft } from '../../lib/api/portalDraftApi.js'
 import { usePersistentState } from '../../hooks/usePersistentState.js'
 import { useAuth } from '../auth/useAuth.js'
 import { useSettingsStore } from '../../hooks/useSettingsStore.js'
 import StepForm from './create-application/StepForm.jsx'
-
-const ADMIN_FORM_STORAGE_KEY = 'mucm-admin-application-form'
-const ADMIN_STEP_STORAGE_KEY = 'mucm-admin-current-step'
-const ADMIN_SUBMISSIONS_KEY = 'mucm-admin-submitted-applications'
-const ADMIN_ACTIVE_APPLICATION_KEY = 'mucm-admin-active-application'
-const ADMIN_STORAGE_RESET_MARKER_KEY = 'mucm-admin-storage-reset-v1'
+import {
+  getAdminApplicationStorageKeys,
+  ADMIN_FORM_STORAGE_KEY,
+  ADMIN_STEP_STORAGE_KEY,
+  ADMIN_SUBMISSIONS_KEY,
+  ADMIN_ACTIVE_APPLICATION_KEY,
+  ADMIN_STORAGE_RESET_MARKER_KEY,
+  clearAdminApplicationLocalDraft,
+} from '../../lib/adminApplicationStorageKeys.js'
+import { getAutofillStudentInfo } from '../../lib/application-form/studentInfoAutofill.js'
 
 const initialForm = applicationSteps.reduce((accumulator, step) => {
   step.fields.forEach((field) => {
@@ -43,15 +48,16 @@ export function AdminCreateApplicationPage() {
   const hasInitializedAutoSaveRef = useRef(false)
   const applicationsPrefixRef = useRef(import.meta.env.VITE_APPLICATIONS_PREFIX || '/api/v1/applications')
 
-  const [currentStepIndex, setCurrentStepIndex] = usePersistentState(ADMIN_STEP_STORAGE_KEY, 0)
-  const [formValues, setFormValues] = usePersistentState(ADMIN_FORM_STORAGE_KEY, initialForm)
+  const adminStorage = useMemo(() => getAdminApplicationStorageKeys(user?.email), [user?.email])
+  const [currentStepIndex, setCurrentStepIndex] = usePersistentState(adminStorage.step, 0)
+  const [formValues, setFormValues] = usePersistentState(adminStorage.form, initialForm)
   const [validationErrors, setValidationErrors] = useState({})
   const [formError, setFormError] = useState('')
   const [draftNotice, setDraftNotice] = useState('')
   const [autoSaveStatus, setAutoSaveStatus] = useState('saved')
   const [submitted, setSubmitted] = useState(false)
   const [lastSubmissionId, setLastSubmissionId] = useState('')
-  const [activeApplication, setActiveApplication] = usePersistentState(ADMIN_ACTIVE_APPLICATION_KEY, {
+  const [activeApplication, setActiveApplication] = usePersistentState(adminStorage.activeApplication, {
     id: '',
     applicationId: '',
   })
@@ -65,30 +71,28 @@ export function AdminCreateApplicationPage() {
       window.localStorage.removeItem(ADMIN_SUBMISSIONS_KEY)
       window.localStorage.removeItem(ADMIN_ACTIVE_APPLICATION_KEY)
       window.localStorage.setItem(ADMIN_STORAGE_RESET_MARKER_KEY, 'true')
-      setCurrentStepIndex(0)
-      setFormValues(initialForm)
-      setActiveApplication({ id: '', applicationId: '' })
     } catch {
       // ignore storage reset issues
     }
-  }, [setActiveApplication, setCurrentStepIndex, setFormValues])
+  }, [])
 
-  // Clear draft if user changed
+  // Clear draft if user changed (clear previous account's scoped keys)
   useEffect(() => {
     const lastUserEmail = window.localStorage.getItem('mucm-admin-last-user-email')
     const currentEmail = user?.email
-    
+
     if (currentEmail && lastUserEmail && currentEmail !== lastUserEmail) {
-      // User changed! Clear local storage drafts
+      clearAdminApplicationLocalDraft(lastUserEmail)
       window.localStorage.removeItem(ADMIN_FORM_STORAGE_KEY)
       window.localStorage.removeItem(ADMIN_STEP_STORAGE_KEY)
       window.localStorage.removeItem(ADMIN_ACTIVE_APPLICATION_KEY)
-      
+      window.localStorage.removeItem(ADMIN_SUBMISSIONS_KEY)
+
       setCurrentStepIndex(0)
       setFormValues(initialForm)
       setActiveApplication({ id: '', applicationId: '' })
     }
-    
+
     if (currentEmail) {
       window.localStorage.setItem('mucm-admin-last-user-email', currentEmail)
     }
@@ -138,17 +142,33 @@ export function AdminCreateApplicationPage() {
     return result
   }, [dropdownCategories])
 
+  /** List endpoint often wraps rows in `{ data: [...] }` inside `response.data`; match `listApplications`. */
+  function normalizeApplicationsListPayload(payload) {
+    if (!payload) return []
+    if (Array.isArray(payload)) return payload
+    if (Array.isArray(payload.data)) return payload.data
+    if (Array.isArray(payload.rows)) return payload.rows
+    if (Array.isArray(payload.applications)) return payload.applications
+    return []
+  }
+
   useEffect(() => {
-    if (!user?.userId || !token) return
+    if (!token) return
     const isFormMostlyEmpty = Object.values(formValues).every((v) => !v || v === '' || v === false)
     if (!isFormMostlyEmpty || activeApplication.id) return
 
     const restoreDraft = async () => {
       try {
-        const response = await requestApplicationApi('GET', `?status=draft&limit=1&created_by=${user.userId}`)
-        if (response.success && response.data?.length > 0) {
-          const draft = response.data[0]
-          const full = await fetchApplicationFullById(draft.id)
+        const query = user?.userId
+          ? `?status=draft&limit=1&created_by=${encodeURIComponent(user.userId)}`
+          : '?status=draft&limit=1'
+        const response = await requestApplicationApi('GET', query)
+        const list = normalizeApplicationsListPayload(response.data)
+        if (response.success !== false && list.length > 0) {
+          const draft = list[0]
+          const rowId = draft.id ?? draft.application_row_id ?? draft.row_id
+          if (!rowId) return
+          const full = await fetchApplicationFullById(rowId)
           const mapped = mapBackendToFormValues(full)
           setFormValues(mapped)
           setCurrentStepIndex(Math.max(0, (full.completed_steps || 1) - 1))
@@ -159,7 +179,7 @@ export function AdminCreateApplicationPage() {
       }
     }
     restoreDraft()
-  }, [user?.userId, token])
+  }, [user?.userId, user?.email, token])
 
   const dynamicSteps = useMemo(() => buildApplicationSteps(dynOptions, programs, documentRequirements), [dynOptions, programs, documentRequirements])
 
@@ -167,6 +187,48 @@ export function AdminCreateApplicationPage() {
     () => dynamicSteps[currentStepIndex] ?? dynamicSteps[0],
     [currentStepIndex, dynamicSteps],
   )
+
+  const programTypeOptions = useMemo(() => {
+    const academicStep = dynamicSteps.find((step) => step.id === 'academicBackground')
+    const programField = academicStep?.fields?.find((field) => field.name === 'programType')
+    return Array.isArray(programField?.options) ? programField.options : []
+  }, [dynamicSteps])
+
+  const subProgramOptions = useMemo(() => {
+    const academicStep = dynamicSteps.find((step) => step.id === 'academicBackground')
+    const subField = academicStep?.fields?.find((field) => field.name === 'subProgram')
+    const byProgram = subField?.dynamicOptions ?? {}
+    const selectedProgram = formValues.programType
+    const options = byProgram[selectedProgram] ?? []
+    return Array.isArray(options) ? options : []
+  }, [dynamicSteps, formValues.programType])
+
+  useEffect(() => {
+    if (submitted) return
+    setFormValues((prev) => {
+      const auto = getAutofillStudentInfo(prev, programTypeOptions, subProgramOptions)
+      if (
+        prev.studentName === auto.studentName &&
+        prev.programOfStudy === auto.programOfStudy &&
+        prev.expectedStartDate === auto.expectedStartDate
+      ) {
+        return prev
+      }
+      return { ...prev, ...auto }
+    })
+  }, [
+    submitted,
+    formValues.firstName,
+    formValues.middleName,
+    formValues.surname,
+    formValues.programType,
+    formValues.subProgram,
+    formValues.semester,
+    formValues.year,
+    programTypeOptions,
+    subProgramOptions,
+    setFormValues,
+  ])
 
   function getAuthHeader() {
     if (token && String(token).trim()) {
@@ -215,7 +277,14 @@ export function AdminCreateApplicationPage() {
         lastError = new Error(data.message || 'Application endpoint not found.')
         continue
       }
-      throw new Error(data.message || `Failed API request for ${path}`)
+      const serverMsg =
+        data.message ||
+        data.error ||
+        (typeof data.errors === 'string' ? data.errors : null) ||
+        (response.status >= 500
+          ? `Server error (${response.status}). Check API logs for ${path}.`
+          : null)
+      throw new Error(serverMsg || `Failed API request for ${path}`)
     }
     throw lastError || new Error('Application endpoint not found.')
   }
@@ -229,14 +298,60 @@ export function AdminCreateApplicationPage() {
     return value
   }
 
+  /**
+   * Tel fields may store internal ISO–dial keys (e.g. US-+1, IN-+91). APIs often validate E.164-style
+   * strings and reject opaque tokens, which can surface as 500s on the server.
+   */
+  function normalizePhoneForApi(value) {
+    const s = normalizeText(value)
+    if (!s) return ''
+    const m = s.match(/^([A-Z]{2})-(\+\d{1,5})$/)
+    if (m) return m[2]
+    return s
+  }
+
+  /**
+   * Empty string breaks Postgres DATE columns via Sequelize ("Invalid date"); use null instead.
+   * Use only where the DB column allows NULL (see dateOfBirthForApi for NOT NULL birth dates).
+   */
+  function optionalDateForApi(value) {
+    const s = normalizeText(value)
+    return s === '' ? null : s
+  }
+
+  /**
+   * Sequelize / DB enforce NOT NULL on personal_details.date_of_birth — null causes "notNull Violation".
+   * Empty drafts therefore send this sentinel and we clear it again when hydrating the form.
+   * (Applicants born exactly on this day are exceedingly rare vs. drafts without DOB.)
+   */
+  const DATE_OF_BIRTH_NOT_SET_SENTINEL = '1900-01-01'
+
+  function dateOfBirthForApi(value) {
+    const s = normalizeText(value)
+    if (s !== '') return s
+    return DATE_OF_BIRTH_NOT_SET_SENTINEL
+  }
+
+  function dateOfBirthFromApi(value) {
+    const raw = normalizeText(value)
+    if (!raw) return ''
+    const ymd = raw.length >= 10 ? raw.slice(0, 10) : raw
+    return ymd === DATE_OF_BIRTH_NOT_SET_SENTINEL ? '' : raw
+  }
+
   function mapBackendToFormValues(data) {
-    const pd = data.personal_details || {}
-    const pg = data.parent_guardian_info || {}
-    const ep = data.english_proficiency || {}
+    const unwrapSingleton = (v) => {
+      if (v == null) return {}
+      return Array.isArray(v) ? v[0] ?? {} : v
+    }
+    const pdRaw = data.personal_details ?? {}
+    const pd = Array.isArray(pdRaw) ? pdRaw[0] ?? {} : pdRaw
+    const pg = unwrapSingleton(data.parent_guardian_info)
+    const ep = unwrapSingleton(data.english_proficiency)
     const st = (data.standardized_tests || [])[0] || {}
-    const ads = data.admission_sought || {}
-    const dis = data.disclosure || {}
-    const fs = data.financial_support || {}
+    const ads = unwrapSingleton(data.admission_sought)
+    const dis = unwrapSingleton(data.disclosure)
+    const fs = unwrapSingleton(data.financial_support)
     const ec = (data.emergency_contacts || [])[0] || {}
 
     const form = { ...initialForm }
@@ -248,7 +363,7 @@ export function AdminCreateApplicationPage() {
     form.surname = pd.surname || ''
     form.preferredName = pd.preferred_name || ''
     form.pronouns = pd.pronouns || ''
-    form.dateOfBirth = pd.date_of_birth || ''
+    form.dateOfBirth = dateOfBirthFromApi(pd.date_of_birth)
     form.gender = pd.gender || ''
     form.nameChanged = pd.name_change || ''
     form.ethnicity = pd.ethnicity_race || ''
@@ -354,7 +469,7 @@ export function AdminCreateApplicationPage() {
     }
 
     // Documents
-    const docs = data.document || {}
+    const docs = unwrapSingleton(data.document)
     form.passport = docs.passport || ''
     form.bankStatement = docs.bank_statement || ''
     form.preMedTranscript = docs.premedical_Bachelor_ug_HSC_Certificate || ''
@@ -445,19 +560,113 @@ export function AdminCreateApplicationPage() {
     return Object.entries(payload).every(([key, value]) => valuesEquivalent(value, row[key]))
   }
 
+  /** Same-shape merge as appli-portal/applicationApiHydration so section ids are found before POST duplicates. */
+  function normalizeFullApplicationForSync(apiData) {
+    if (!apiData || typeof apiData !== 'object') return {}
+    const merged =
+      apiData.application && typeof apiData.application === 'object'
+        ? { ...apiData.application, ...apiData }
+        : { ...apiData }
+
+    return {
+      ...merged,
+      personal_details:
+        merged.personal_details ??
+        merged.personalDetails ??
+        apiData.personal_details ??
+        apiData.personalDetails,
+      emergency_contacts:
+        merged.emergency_contacts ??
+        merged.emergencyContacts ??
+        apiData.emergency_contacts ??
+        apiData.emergencyContacts,
+      parent_guardian_info:
+        merged.parent_guardian_info ??
+        merged.parentGuardian ??
+        merged.parent_guardian ??
+        apiData.parent_guardian_info ??
+        apiData.parentGuardian ??
+        apiData.parent_guardian,
+      academic_institutions:
+        merged.academic_institutions ??
+        merged.academicInstitutions ??
+        apiData.academic_institutions ??
+        apiData.academicInstitutions,
+      english_proficiency:
+        merged.english_proficiency ??
+        merged.englishProficiency ??
+        apiData.english_proficiency ??
+        apiData.englishProficiency,
+      standardized_tests:
+        merged.standardized_tests ??
+        merged.standardizedTests ??
+        apiData.standardized_tests ??
+        apiData.standardizedTests,
+      admission_sought:
+        merged.admission_sought ??
+        merged.admissionSought ??
+        apiData.admission_sought ??
+        apiData.admissionSought,
+      disclosure:
+        merged.disclosure ??
+        merged.disclosures ??
+        apiData.disclosure ??
+        apiData.disclosures,
+      experiences: merged.experiences ?? apiData.experiences ?? [],
+      document:
+        merged.document ??
+        merged.documents ??
+        apiData.document ??
+        apiData.documents,
+      financial_support:
+        merged.financial_support ??
+        merged.financialSupport ??
+        apiData.financial_support ??
+        apiData.financialSupport,
+    }
+  }
+
   async function fetchApplicationFullById(applicationRowId) {
     const data = await requestApplicationApi('GET', `/${applicationRowId}?full=true`)
-    return data.data || {}
+    return normalizeFullApplicationForSync(data.data || {})
+  }
+
+  /** Property on normalized full-application object for singleton upserts. */
+  const SINGLETON_SECTION_TO_FIELD = {
+    'personal-details': 'personal_details',
+    'parent-guardian': 'parent_guardian_info',
+    'english-proficiency': 'english_proficiency',
+    'admission-sought': 'admission_sought',
+    disclosures: 'disclosure',
+    document: 'document',
+    'financial-support': 'financial_support',
+  }
+
+  function singletonExistingRow(existing) {
+    if (existing == null) return undefined
+    return Array.isArray(existing) ? existing[0] : existing
   }
 
   async function upsertSingletonSection(applicationRowId, pathSegment, payload, existingRow) {
-    const rowId = existingRow?.id
+    const row = singletonExistingRow(existingRow)
+    const rowId = row?.id
     if (rowId) {
       await requestApplicationApi('PUT', `/${applicationRowId}/${pathSegment}/${rowId}`, payload)
       return
     }
     if (!hasAnyValue(payload)) return
-    await requestApplicationApi('POST', `/${applicationRowId}/${pathSegment}`, payload)
+    try {
+      await requestApplicationApi('POST', `/${applicationRowId}/${pathSegment}`, payload)
+    } catch (firstError) {
+      const data = await requestApplicationApi('GET', `/${applicationRowId}?full=true`)
+      const full = normalizeFullApplicationForSync(data.data || {})
+      const prop = SINGLETON_SECTION_TO_FIELD[pathSegment]
+      const refreshed = prop ? singletonExistingRow(full[prop]) : undefined
+      if (!refreshed?.id) {
+        throw firstError
+      }
+      await requestApplicationApi('PUT', `/${applicationRowId}/${pathSegment}/${refreshed.id}`, payload)
+    }
   }
 
   async function upsertListSection(applicationRowId, pathSegment, items, existingRows = [], options = {}) {
@@ -494,7 +703,7 @@ export function AdminCreateApplicationPage() {
     const emergencyPayload = {
       full_name: normalizeText(formValues.contactName),
       relationship: normalizeText(formValues.relationship),
-      phone: normalizeText(formValues.contactPhone),
+      phone: normalizePhoneForApi(formValues.contactPhone),
       email: normalizeText(formValues.contactEmail),
       country: normalizeText(formValues.contactCountry),
       home_address: normalizeText(formValues.contactAddress),
@@ -553,18 +762,18 @@ export function AdminCreateApplicationPage() {
         surname: normalizeText(formValues.surname),
         preferred_name: normalizeText(formValues.preferredName),
         pronouns: normalizeText(formValues.pronouns),
-        date_of_birth: normalizeText(formValues.dateOfBirth),
+        date_of_birth: dateOfBirthForApi(formValues.dateOfBirth),
         gender: normalizeText(formValues.gender),
         name_change: normalizeText(formValues.nameChanged),
         ethnicity_race: normalizeText(formValues.ethnicity),
         nationality_citizenship: normalizeText(formValues.citizenship),
         country_of_residence: normalizeText(formValues.countryOfResidence),
         passport_number: normalizeText(formValues.passportNumber),
-        passport_expiry_date: normalizeText(formValues.passportExpiry),
+        passport_expiry_date: optionalDateForApi(formValues.passportExpiry),
         visa_immigration_status: normalizeText(formValues.visaStatus),
         email: normalizeText(formValues.email),
-        mobile_phone: normalizeText(formValues.phoneMobile),
-        home_phone: normalizeText(formValues.phoneHome),
+        mobile_phone: normalizePhoneForApi(formValues.phoneMobile),
+        home_phone: normalizePhoneForApi(formValues.phoneHome),
         street_address: normalizeText(formValues.permanentAddress),
         city: normalizeText(formValues.city),
         state_province: normalizeText(formValues.stateProvince),
@@ -573,9 +782,7 @@ export function AdminCreateApplicationPage() {
         mailing_same_as_permanent: Boolean(formValues.sameAsPermanent),
         mailing_street_address: formValues.sameAsPermanent ? null : normalizeText(formValues.mailingAddress),
         mailing_city: formValues.sameAsPermanent ? null : normalizeText(formValues.mailingCity),
-        mailing_state_province: formValues.sameAsPermanent
-          ? null
-          : normalizeText(formValues.mailingStateProvince),
+        mailing_state_province: formValues.sameAsPermanent ? null : normalizeText(formValues.mailingStateProvince),
         mailing_postal_code: formValues.sameAsPermanent ? null : normalizeText(formValues.mailingPostalCode),
         mailing_country: formValues.sameAsPermanent ? null : normalizeText(formValues.mailingCountry),
       },
@@ -584,11 +791,11 @@ export function AdminCreateApplicationPage() {
         father_name: normalizeText(formValues.fatherName),
         father_occupation: normalizeText(formValues.fatherOccupation),
         father_email: normalizeText(formValues.fatherEmail),
-        father_phone: normalizeText(formValues.fatherPhone),
+        father_phone: normalizePhoneForApi(formValues.fatherPhone),
         mother_name: normalizeText(formValues.motherName),
         mother_occupation: normalizeText(formValues.motherOccupation),
         mother_email: normalizeText(formValues.motherEmail),
-        mother_phone: normalizeText(formValues.motherPhone),
+        mother_phone: normalizePhoneForApi(formValues.motherPhone),
       },
       academicInstitutions: academicInstitutionRows,
       englishProficiency: {
@@ -611,7 +818,11 @@ export function AdminCreateApplicationPage() {
           hasAnyValue(row || {}),
         ),
         preferred_semester: normalizeText(formValues.semester),
-        preferred_year: formValues.year ? Number(formValues.year) : null,
+        preferred_year: (() => {
+          if (!formValues.year) return null
+          const n = Number(formValues.year)
+          return Number.isFinite(n) ? n : null
+        })(),
       },
       disclosures: {
         discipline_action: yesNoToBoolean(formValues.hasBeenDisciplined),
@@ -655,7 +866,7 @@ export function AdminCreateApplicationPage() {
         sponsor_state: normalizeText(formValues.sponsorState),
         sponsorPostalCode: normalizeText(formValues.sponsorPostalCode),
         sponsor_country: normalizeText(formValues.sponsorCountry),
-        sponsor_phone: normalizeText(formValues.sponsorPhone),
+        sponsor_phone: normalizePhoneForApi(formValues.sponsorPhone),
         sponsor_email: normalizeText(formValues.sponsorEmail),
         orgName: normalizeText(formValues.orgName),
         org_contact_person: normalizeText(formValues.orgContactPerson),
@@ -665,7 +876,7 @@ export function AdminCreateApplicationPage() {
         org_state: normalizeText(formValues.orgState),
         orgPostalCode: normalizeText(formValues.orgPostalCode),
         org_country: normalizeText(formValues.orgCountry),
-        org_phone: normalizeText(formValues.orgPhone),
+        org_phone: normalizePhoneForApi(formValues.orgPhone),
         org_email: normalizeText(formValues.orgEmail),
         hasBankStatement: Boolean(formValues.hasBankStatement),
         hasIncomeProof: Boolean(formValues.hasIncomeProof),
@@ -674,9 +885,9 @@ export function AdminCreateApplicationPage() {
         hasLoanApproval: Boolean(formValues.hasLoanApproval),
         certifyAccurate: Boolean(formValues.certifyAccurate),
         certifyFinancialResponsibility: Boolean(formValues.certifyFinancialResponsibility),
-        certifyDate: normalizeText(formValues.certifyDate),
+        certifyDate: optionalDateForApi(formValues.certifyDate),
         sponsorCertifySupport: Boolean(formValues.sponsorCertifySupport),
-        sponsorCertifyDate: normalizeText(formValues.sponsorCertifyDate),
+        sponsorCertifyDate: optionalDateForApi(formValues.sponsorCertifyDate),
         studentSignatureMethod: normalizeText(formValues.studentSignatureMethod),
         studentSignatureTyped: normalizeText(formValues.studentSignatureTyped),
         studentSignatureUpload: normalizeText(formValues.studentSignatureUpload),
@@ -985,14 +1196,24 @@ export function AdminCreateApplicationPage() {
     setFormError('')
     const nextStepIndex = Math.min(currentStepIndex + 1, dynamicSteps.length - 1)
     try {
-      window.localStorage.setItem(ADMIN_FORM_STORAGE_KEY, JSON.stringify(formValues))
-      window.localStorage.setItem(ADMIN_STEP_STORAGE_KEY, JSON.stringify(nextStepIndex))
+      window.localStorage.setItem(adminStorage.form, JSON.stringify(formValues))
+      window.localStorage.setItem(adminStorage.step, JSON.stringify(nextStepIndex))
     } catch {
       // ignore
     }
     try {
       const meta = await persistApplication({ stepIndex: nextStepIndex, isComplete: false })
       await syncApplicationSections(meta.id)
+      if (meta.id) {
+        try {
+          await saveAdminDraft(
+            { applicationId: meta.id, formValues, currentStepIndex: nextStepIndex, savedFromAction: 'save_and_continue' },
+            token,
+          )
+        } catch (draftErr) {
+          console.warn('Draft save failed (non-blocking):', draftErr)
+        }
+      }
       setCurrentStepIndex(nextStepIndex)
       setDraftNotice('Progress saved to server. Moving to next step.')
     } catch (error) {
@@ -1036,14 +1257,24 @@ export function AdminCreateApplicationPage() {
 
   async function handleSaveDraft() {
     try {
-      window.localStorage.setItem(ADMIN_FORM_STORAGE_KEY, JSON.stringify(formValues))
-      window.localStorage.setItem(ADMIN_STEP_STORAGE_KEY, JSON.stringify(currentStepIndex))
+      window.localStorage.setItem(adminStorage.form, JSON.stringify(formValues))
+      window.localStorage.setItem(adminStorage.step, JSON.stringify(currentStepIndex))
     } catch {
       // ignore
     }
     try {
       const meta = await persistApplication({ stepIndex: currentStepIndex, isComplete: false })
       await syncApplicationSections(meta.id)
+      if (meta.id) {
+        try {
+          await saveAdminDraft(
+            { applicationId: meta.id, formValues, currentStepIndex, savedFromAction: 'draft' },
+            token,
+          )
+        } catch (draftErr) {
+          console.warn('Draft save failed (non-blocking):', draftErr)
+        }
+      }
       setFormError('')
       setDraftNotice('Draft saved to server successfully.')
     } catch (error) {
@@ -1107,10 +1338,10 @@ export function AdminCreateApplicationPage() {
       })),
     }
     try {
-      const existing = JSON.parse(window.localStorage.getItem(ADMIN_SUBMISSIONS_KEY) ?? '[]')
+      const existing = JSON.parse(window.localStorage.getItem(adminStorage.submissions) ?? '[]')
       const safeExisting = Array.isArray(existing) ? existing : []
       safeExisting.unshift(submittedRecord)
-      window.localStorage.setItem(ADMIN_SUBMISSIONS_KEY, JSON.stringify(safeExisting))
+      window.localStorage.setItem(adminStorage.submissions, JSON.stringify(safeExisting))
     } catch {
       // ignore
     }
@@ -1125,9 +1356,9 @@ export function AdminCreateApplicationPage() {
     setLastSubmissionId('')
     setActiveApplication({ id: '', applicationId: '' })
     try {
-      window.localStorage.removeItem(ADMIN_FORM_STORAGE_KEY)
-      window.localStorage.removeItem(ADMIN_STEP_STORAGE_KEY)
-      window.localStorage.removeItem(ADMIN_ACTIVE_APPLICATION_KEY)
+      window.localStorage.removeItem(adminStorage.form)
+      window.localStorage.removeItem(adminStorage.step)
+      window.localStorage.removeItem(adminStorage.activeApplication)
     } catch {
       // ignore
     }

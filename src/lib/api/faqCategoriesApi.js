@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../env.js'
+import { actionFromMethod, assertApiPermission } from './permissionGuard.js'
 
 const FAQ_CATEGORIES_BASE = `${API_BASE_URL}/api/v1/faq-categories`
 
@@ -13,6 +14,7 @@ function normalizeCategory(row) {
 }
 
 async function request(path = '', options = {}) {
+  assertApiPermission('faq', actionFromMethod(options.method || 'GET'))
   const hasBody = options.body !== undefined
   const res = await fetch(`${FAQ_CATEGORIES_BASE}${path}`, {
     headers: hasBody

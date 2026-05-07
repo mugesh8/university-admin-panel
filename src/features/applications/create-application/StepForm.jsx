@@ -198,7 +198,7 @@ function StepGroupPanel({
       ) : null}
 
       {hasRegularFields ? (
-        <div className="grid grid-cols-1 gap-5 p-6 md:grid-cols-2 xl:grid-cols-3 sm:p-8">
+        <div className="grid grid-cols-1 gap-6 p-6 sm:p-8 md:grid-cols-2 md:items-start xl:grid-cols-[repeat(3,minmax(0,1fr))]">
           {group.fields.map((field, fieldIndex) => {
             const spanWide =
               field.fullWidth ||
@@ -212,7 +212,7 @@ function StepGroupPanel({
               <div
                 key={field.name}
                 style={{ animationDelay: `${(groupIndex * 4 + fieldIndex) * 24}ms` }}
-                className={`animate-fade-in-up ${spanWide ? 'md:col-span-2 xl:col-span-3' : ''}`}
+                className={`animate-fade-in-up min-w-0 ${spanWide ? 'md:col-span-2 xl:col-span-3' : ''}`}
               >
                 <FormField
                   field={field}
@@ -315,7 +315,6 @@ function StepForm({
   isLastStep,
   onSubmit,
 }) {
-  const progressPercent = Math.round((stepNumber / totalSteps) * 100)
   const [uploadActivityCount, setUploadActivityCount] = useState(0)
   const reportUploadActivity = useCallback((delta) => {
     setUploadActivityCount((c) => Math.max(0, c + delta))
@@ -379,6 +378,10 @@ function StepForm({
       return !hasStepError
     })
   }, [steps, values, errors])
+
+  const completedStepCount = stepCompletion.filter(Boolean).length
+  const progressPercent =
+    totalSteps > 0 ? Math.round((completedStepCount / totalSteps) * 100) : 0
 
   const isReviewStep = step.id === 'reviewSubmit'
   const priorSteps = isReviewStep ? steps.slice(0, -1) : []
@@ -829,11 +832,11 @@ function StepForm({
                   ) : null}
 
                   {hasRegularFields ? (
-                    <div className="grid grid-cols-1 gap-3 p-5 md:grid-cols-2 xl:grid-cols-3 sm:p-6">
+                    <div className="grid grid-cols-1 gap-6 p-5 sm:p-6 md:grid-cols-2 md:items-start xl:grid-cols-[repeat(3,minmax(0,1fr))]">
                       {group.fields.map((field) => (
                         <div
                           key={field.name}
-                          className={`animate-fade-in-up ${
+                          className={`animate-fade-in-up min-w-0 ${
                             field.fullWidth ||
                             field.type === 'checkbox' ||
                             field.type === 'file' ||

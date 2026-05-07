@@ -22,22 +22,70 @@ const PHONE_COUNTRY_CODES = countryCallingCodes.map((item) => ({
   label: `${item.name} (${item.dialCode})`,
 }))
 
+function phoneOptionsWithSameDial(dial) {
+  return PHONE_COUNTRY_CODES.filter((item) => item.value === dial)
+}
+
+function defaultNanpKey() {
+  return phoneOptionsWithSameDial('+1')[0]?.key ?? 'CA-+1'
+}
+
+/** Parse stored phone string for tel split control (country select + local input). */
 function splitPhoneValue(raw) {
+  const trimmed = String(raw ?? '').trim()
+
+  const loneKeyOption = PHONE_COUNTRY_CODES.find((item) => item.key === trimmed)
+  if (loneKeyOption) {
+    return { countryKey: loneKeyOption.key, localNumber: '' }
+  }
+
+  if (!trimmed) {
+    const k = defaultNanpKey()
+    return { countryKey: k, localNumber: '' }
+  }
+
   const value = sanitizePhoneInput(raw ?? '')
   const match = value.match(/^\+(\d{1,4})(?:[\s-]*)?(.*)$/)
   if (!match) {
-    return { countryCode: '+1', localNumber: value }
+    const k = defaultNanpKey()
+    return { countryKey: k, localNumber: value }
   }
+
   const fullCode = `+${match[1]}`
-  const knownCode = PHONE_COUNTRY_CODES.some((item) => item.value === fullCode) ? fullCode : '+1'
-  const localNumber = knownCode === fullCode ? match[2] : value.replace(/^\+\d{1,4}\s*/, '')
-  return { countryCode: knownCode, localNumber }
+  const withDial = PHONE_COUNTRY_CODES.filter((item) => item.value === fullCode)
+  const knownDial = withDial.length > 0 ? fullCode : '+1'
+  const nanpFallback = phoneOptionsWithSameDial(knownDial)[0] ?? phoneOptionsWithSameDial('+1')[0]
+  const localNumber =
+    withDial.length > 0 && knownDial === fullCode ? match[2] : value.replace(/^\+\d{1,4}\s*/, '')
+
+  const pickedCountry = withDial.length > 0 ? withDial[0] : nanpFallback
+  const countryKey = pickedCountry?.key ?? defaultNanpKey()
+
+  return {
+    countryKey,
+    localNumber,
+  }
 }
 
-function buildPhoneValue(countryCode, localNumber) {
-  const safeCode = String(countryCode || '+1').trim() || '+1'
-  const safeLocal = sanitizePhoneInput(localNumber ?? '').replace(/^\+/, '').trim()
-  return safeLocal ? `${safeCode} ${safeLocal}` : ''
+function buildPhoneValue(countryKey, localNumber) {
+  const entry =
+    PHONE_COUNTRY_CODES.find((item) => item.key === countryKey) ||
+    PHONE_COUNTRY_CODES.find((item) => item.value === countryKey)
+  if (!entry) return ''
+
+  const safeLocal = sanitizePhoneInput(localNumber ?? '')
+    .replace(/^\+/, '')
+    .trim()
+
+  if (!safeLocal) {
+    const sameDial = phoneOptionsWithSameDial(entry.value)
+    if (sameDial.length > 1) {
+      return entry.key
+    }
+    return entry.value
+  }
+
+  return `${entry.value} ${safeLocal}`
 }
 
 function RadioOptionDescription({ text }) {
@@ -337,8 +385,10 @@ function FormField({
     placeholder,
   } = field
   const labelClasses = 'block text-sm font-medium text-foreground'
+  /** Single-line height locked — avoid `display:flex` on native inputs (can confuse height in some browsers). */
   const inputClasses =
-    'mt-2 flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+    'mt-2 box-border h-10 min-h-10 max-h-10 w-full rounded-md border border-input bg-background px-3 py-0 text-sm leading-10 text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background'
+  const selectInputClasses = `${inputClasses} cursor-pointer pr-2`
 
   if (type === 'note') {
     const isPlain = field.noteVariant === 'plain'
@@ -636,7 +686,7 @@ function FormField({
           {label} {required ? <span className="text-red-500">*</span> : null}
         </span>
         <textarea
-          className={`${inputClasses} min-h-24 resize-y ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+          className={`${inputClasses} min-h-24 max-h-none resize-y leading-normal ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
           value={value ?? ''}
           required={required}
           placeholder={placeholder}
@@ -653,41 +703,47 @@ function FormField({
   }
 
   if (type === 'tel') {
-    const { countryCode, localNumber } = splitPhoneValue(value)
+    const { countryKey, localNumber } = splitPhoneValue(value)
     return (
-      <label className="flex flex-col justify-start">
-        <span className={`${labelClasses} leading-5`}>
+      <label className="flex min-w-0 flex-col">
+        <span className={labelClasses}>
           {label} {required ? <span className="text-red-500">*</span> : null}
         </span>
-        <div className="mt-2 grid grid-cols-[minmax(128px,42%)_minmax(0,1fr)] items-start gap-2">
-          <select
-            className={`${inputClasses} mt-0 min-w-0 ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-            value={countryCode}
-            onChange={(event) => onChange(name, buildPhoneValue(event.target.value, localNumber))}
-            aria-label={`${label} country code`}
-          >
-            {PHONE_COUNTRY_CODES.map((option) => (
-              <option key={option.key} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-          <input
-            className={`${inputClasses} mt-0 min-w-0 ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
-            type="tel"
-            value={localNumber}
-            required={required}
-            placeholder={placeholder ?? 'Phone number'}
-            inputMode="numeric"
-            onChange={(event) => onChange(name, buildPhoneValue(countryCode, event.target.value))}
-          />
+        <div className="mt-2 min-w-0">
+          <div className="flex min-w-0 flex-col gap-2 sm:h-10 sm:flex-row sm:items-center">
+            <select
+              className={`${selectInputClasses} mt-0 w-full min-w-0 shrink-0 sm:w-[10.25rem] sm:max-w-[40%] ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+              value={countryKey}
+              onChange={(event) => onChange(name, buildPhoneValue(event.target.value, localNumber))}
+              aria-label={`${label} country code`}
+            >
+              {PHONE_COUNTRY_CODES.map((option) => (
+                <option key={option.key} value={option.key}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <input
+              className={`${inputClasses} mt-0 min-h-10 min-w-0 flex-1 sm:mt-0 ${error ? 'border-destructive focus-visible:ring-destructive' : ''}`}
+              type="tel"
+              value={localNumber}
+              required={required}
+              placeholder={placeholder ?? 'Phone number'}
+              inputMode="numeric"
+              onChange={(event) => onChange(name, buildPhoneValue(countryKey, event.target.value))}
+            />
+          </div>
+          <div className="mt-1 flex min-h-[2.75rem] flex-col justify-end gap-0.5">
+            {helper ? (
+              <small className="block text-sm leading-snug text-muted-foreground">{helper}</small>
+            ) : (
+              <span className="block text-sm leading-snug text-transparent select-none" aria-hidden="true">
+                &nbsp;
+              </span>
+            )}
+            {error ? <small className="block text-xs font-medium text-destructive">{error}</small> : null}
+          </div>
         </div>
-        {helper ? (
-          <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
-        ) : null}
-        {error ? (
-          <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
-        ) : null}
       </label>
     )
   }
@@ -798,8 +854,10 @@ function FormField({
     )
   }
 
+  const showReservedFooterBand = type === 'email'
+
   return (
-    <label>
+    <label className="flex min-w-0 flex-col">
       <span className={labelClasses}>
         {label} {required ? <span className="text-red-500">*</span> : null}
       </span>
@@ -812,12 +870,27 @@ function FormField({
         inputMode={type === 'tel' ? 'numeric' : undefined}
         onChange={(event) => onChange(name, event.target.value)}
       />
-      {helper ? (
-        <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
-      ) : null}
-      {error ? (
-        <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
-      ) : null}
+      {showReservedFooterBand ? (
+        <div className="mt-1 flex min-h-[2.75rem] flex-col justify-end gap-0.5">
+          {helper ? (
+            <small className="block text-sm leading-snug text-muted-foreground">{helper}</small>
+          ) : (
+            <span className="block text-sm leading-snug text-transparent select-none" aria-hidden="true">
+              &nbsp;
+            </span>
+          )}
+          {error ? <small className="block text-xs font-medium text-destructive">{error}</small> : null}
+        </div>
+      ) : (
+        <>
+          {helper ? (
+            <small className="mt-1 block text-sm text-muted-foreground">{helper}</small>
+          ) : null}
+          {error ? (
+            <small className="mt-1 block text-xs font-medium text-destructive">{error}</small>
+          ) : null}
+        </>
+      )}
     </label>
   )
 }

@@ -7,6 +7,7 @@ import { Card } from '../../components/ui/Card.jsx'
 import { DEMO_EMAIL, DEMO_OTP } from './demoCredentials.js'
 import { useAuth } from './useAuth.js'
 import { MUCM_CREST_URL } from '../../lib/brand.js'
+import { diagnoseAdminLoginEmail } from '../../lib/api/adminAuthApi.js'
 
 export function LoginPage() {
   const { verifyLoginOtpAndSignIn, requestLoginOtp } = useAuth()
@@ -52,7 +53,30 @@ export function LoginPage() {
     try {
       const data = await requestLoginOtp(email.trim())
       if (!data.success) {
-        setError(data.message || 'Could not send the code.')
+        const baseMessage = data.message || 'Could not send the code.'
+        const normalized = baseMessage.trim().toLowerCase()
+        if (normalized === 'this email is not authorized for admin login') {
+          const diag = await diagnoseAdminLoginEmail(email.trim())
+          if (diag.success) {
+            if (diag.status === 'not_found') {
+              setError('No admin account found for this email. Ask Super Admin to create your account.')
+              return
+            }
+            if (diag.status === 'admin_inactive') {
+              setError('Your admin account is inactive. Ask Super Admin to enable account access.')
+              return
+            }
+            if (diag.status === 'role_inactive') {
+              setError(
+                diag.roleName
+                  ? `Your role (${diag.roleName}) is inactive. Ask Super Admin to activate this role.`
+                  : 'Your assigned role is inactive. Ask Super Admin to activate the role.',
+              )
+              return
+            }
+          }
+        }
+        setError(baseMessage)
         return
       }
       setCodeNotice('Verification code sent to your email.')

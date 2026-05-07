@@ -1,6 +1,8 @@
 import { API_BASE_URL } from '../env.js'
 
 const ADMIN_AUTH_PREFIXES = ['/api/v1/admin-auth', '/api/admin-auth']
+const ADMINS_PREFIXES = ['/api/v1/admins', '/api/admins']
+const ADMIN_ROLES_PREFIXES = ['/api/v1/admin-roles', '/api/admin-roles']
 
 async function parseJson(res) {
   const text = await res.text()
@@ -71,5 +73,54 @@ export async function fetchAdminMe(token) {
     if ((data?._status ?? 0) !== 404) return data
   }
   return lastFailure ?? { success: false, message: 'Unexpected response from server' }
+}
+
+async function fetchJson(url, options) {
+  const res = await fetch(url, options)
+  return parseJson(res)
+}
+
+export async function diagnoseAdminLoginEmail(email) {
+  if (!API_BASE_URL) return { success: false, message: 'Missing API URL' }
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+  if (!normalizedEmail) return { success: false, message: 'Email is required' }
+
+  let admins = null
+  for (const prefix of ADMINS_PREFIXES) {
+    const data = await fetchJson(`${API_BASE_URL}${prefix}`, {})
+    if (Array.isArray(data?.data)) {
+      admins = data.data
+      break
+    }
+  }
+  if (!Array.isArray(admins)) {
+    return { success: false, message: 'Could not validate admin account status.' }
+  }
+
+  const admin = admins.find((row) => String(row?.email || '').trim().toLowerCase() === normalizedEmail)
+  if (!admin) {
+    return { success: true, status: 'not_found' }
+  }
+  if (!admin.is_active) {
+    return { success: true, status: 'admin_inactive' }
+  }
+
+  let roles = null
+  for (const prefix of ADMIN_ROLES_PREFIXES) {
+    const data = await fetchJson(`${API_BASE_URL}${prefix}`, {})
+    if (Array.isArray(data?.data)) {
+      roles = data.data
+      break
+    }
+  }
+
+  if (Array.isArray(roles)) {
+    const role = roles.find((row) => String(row?.id || '') === String(admin.role_id || ''))
+    if (role && role.is_active === false) {
+      return { success: true, status: 'role_inactive', roleName: role.name || '' }
+    }
+  }
+
+  return { success: true, status: 'ok' }
 }
 

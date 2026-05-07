@@ -317,6 +317,11 @@ export function RolesPermissionsPage() {
     const email = accEmail.trim()
     const region = accRegion.trim()
     if (!name || !email || !region || !accRoleId) return
+    const selectedRole = roles.find((r) => r.id === accRoleId)
+    if (!selectedRole || !selectedRole.active) {
+      setError('Select an active role. Admin accounts with inactive roles cannot sign in.')
+      return
+    }
 
     if (accountEditingId) {
       const res = await updateAdmin(
@@ -724,7 +729,7 @@ export function RolesPermissionsPage() {
               ))}
             </Select>
             <Select label="Role" value={accRoleId} onChange={(e) => setAccRoleId(e.target.value)} required>
-              {roles.map((r) => (
+              {roles.filter((r) => r.active).map((r) => (
                 <option key={r.id} value={r.id}>
                   {r.name}
                 </option>
@@ -765,54 +770,14 @@ export function RolesPermissionsPage() {
               </Button>
             </div>
             <div className="overflow-x-auto rounded-xl border border-[#0A1628]/10">
-              <table className="w-full min-w-[760px] border-collapse text-sm">
+              <table className="w-full min-w-[600px] border-collapse text-sm">
                 <thead>
                   <tr className="border-b border-[#0A1628]/10 bg-[var(--color-bg)]">
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">Sidebar link</th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
-                          title="Toggle Create for all"
-                          onChange={(e) => toggleColumn('create', e.target.checked)}
-                        />
-                        <span>Create</span>
-                      </div>
-                    </th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
-                          title="Toggle Read for all"
-                          onChange={(e) => toggleColumn('read', e.target.checked)}
-                        />
-                        <span>Read</span>
-                      </div>
-                    </th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
-                          title="Toggle Update for all"
-                          onChange={(e) => toggleColumn('update', e.target.checked)}
-                        />
-                        <span>Update</span>
-                      </div>
-                    </th>
-                    <th className="px-3 py-2.5 text-left font-semibold text-[var(--color-heading)]">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          className="h-3.5 w-3.5 rounded border-[#0A1628]/25 text-[#0A1628] focus:ring-[#D4A843]/50"
-                          title="Toggle Delete for all"
-                          onChange={(e) => toggleColumn('delete', e.target.checked)}
-                        />
-                        <span>Delete</span>
-                      </div>
-                    </th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-[var(--color-heading)]">Sidebar link</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-[var(--color-heading)]">Create</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-[var(--color-heading)]">Read</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-[var(--color-heading)]">Update</th>
+                    <th className="px-3 py-2 text-left text-sm font-semibold text-[var(--color-heading)]">Delete</th>
                   </tr>
                 </thead>
                 <tbody>

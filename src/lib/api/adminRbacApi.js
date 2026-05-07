@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../env.js'
+import { assertApiPermission } from './permissionGuard.js'
 
 const ADMIN_ROLES_BASE = `${API_BASE_URL}/api/v1/admin-roles`
 const ADMINS_BASE = `${API_BASE_URL}/api/v1/admins`
@@ -26,12 +27,14 @@ function requireApiBase() {
 }
 
 export async function fetchAdminRoles(token) {
+  assertApiPermission('roles_permissions', 'readall')
   requireApiBase()
   const res = await fetch(ADMIN_ROLES_BASE, { headers: headers(token, false) })
   return parseJson(res)
 }
 
 export async function createAdminRole(payload, token) {
+  assertApiPermission('roles_permissions', 'create')
   requireApiBase()
   const res = await fetch(ADMIN_ROLES_BASE, {
     method: 'POST',
@@ -42,6 +45,7 @@ export async function createAdminRole(payload, token) {
 }
 
 export async function updateAdminRole(id, payload, token) {
+  assertApiPermission('roles_permissions', 'update')
   requireApiBase()
   const res = await fetch(`${ADMIN_ROLES_BASE}/${id}`, {
     method: 'PUT',
@@ -52,6 +56,7 @@ export async function updateAdminRole(id, payload, token) {
 }
 
 export async function deleteAdminRole(id, token) {
+  assertApiPermission('roles_permissions', 'delete')
   requireApiBase()
   const res = await fetch(`${ADMIN_ROLES_BASE}/${id}`, {
     method: 'DELETE',
@@ -61,12 +66,14 @@ export async function deleteAdminRole(id, token) {
 }
 
 export async function fetchAdmins(token) {
+  assertApiPermission('users_logs', 'readall')
   requireApiBase()
   const res = await fetch(ADMINS_BASE, { headers: headers(token, false) })
   return parseJson(res)
 }
 
 export async function createAdmin(payload, token) {
+  assertApiPermission('users_logs', 'create')
   requireApiBase()
   const res = await fetch(ADMINS_BASE, {
     method: 'POST',
@@ -77,6 +84,7 @@ export async function createAdmin(payload, token) {
 }
 
 export async function updateAdmin(id, payload, token) {
+  assertApiPermission('users_logs', 'update')
   requireApiBase()
   const res = await fetch(`${ADMINS_BASE}/${id}`, {
     method: 'PUT',
@@ -87,6 +95,7 @@ export async function updateAdmin(id, payload, token) {
 }
 
 export async function deleteAdmin(id, token) {
+  assertApiPermission('users_logs', 'delete')
   requireApiBase()
   const res = await fetch(`${ADMINS_BASE}/${id}`, {
     method: 'DELETE',
@@ -96,6 +105,7 @@ export async function deleteAdmin(id, token) {
 }
 
 export async function updateAdminPermissions(id, permissions, token) {
+  assertApiPermission('roles_permissions', 'alter')
   requireApiBase()
   const res = await fetch(`${ADMINS_BASE}/${id}/permissions`, {
     method: 'PUT',

@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../env.js'
+import { actionFromMethod, assertApiPermission } from './permissionGuard.js'
 
 const SUPPORT_TICKETS_BASE = `${API_BASE_URL}/api/v1/support-tickets`
 
@@ -45,6 +46,7 @@ function normalizeTicket(row) {
 }
 
 async function request(path = '', options = {}) {
+  assertApiPermission('support_tickets', actionFromMethod(options.method || 'GET'))
   const hasBody = options.body !== undefined
   const response = await fetch(`${SUPPORT_TICKETS_BASE}${path}`, {
     headers: hasBody

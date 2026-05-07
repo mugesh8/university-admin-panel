@@ -4,10 +4,17 @@ import {
   requestAdminOtp,
   verifyAdminOtp,
 } from '../../lib/api/adminAuthApi.js'
-import { fetchPortalMe, requestPortalOtp, verifyPortalOtp } from '../../lib/api/portalAuthApi.js'
+import { fetchPortalMe } from '../../lib/api/portalAuthApi.js'
 import { requestSuperAdminOtp, verifySuperAdminOtp } from '../../lib/api/superAdminAuthApi.js'
 import { AuthContext } from './authContext.js'
 import { DEMO_EMAIL, DEMO_OTP } from './demoCredentials.js'
+import { pickUserIdFromPayload } from '../../lib/auth/pickUserId.js'
+import {
+  ADMIN_FORM_STORAGE_KEY,
+  ADMIN_STEP_STORAGE_KEY,
+  ADMIN_SUBMISSIONS_KEY,
+  ADMIN_ACTIVE_APPLICATION_KEY,
+} from '../../lib/adminApplicationStorageKeys.js'
 
 const SESSION_KEY = 'mucm_admin_session'
 
@@ -21,22 +28,39 @@ function readSession() {
   }
 }
 
+function persistSessionPatch(patch) {
+  try {
+    const s = readSession() || {}
+    sessionStorage.setItem(SESSION_KEY, JSON.stringify({ ...s, ...patch }))
+  } catch {
+    // ignore
+  }
+}
+
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => {
     const s = readSession()
     if (s?.token && s?.email) {
-      return { email: s.email, role: s.role ?? 'Admin', token: s.token, authProvider: s.authProvider ?? null }
+      return {
+        email: s.email,
+        role: s.role ?? 'Admin',
+        permissions: s.permissions && typeof s.permissions === 'object' ? s.permissions : {},
+        token: s.token,
+        authProvider: s.authProvider ?? null,
+        userId: s.userId ?? undefined,
+      }
     }
     return null
   })
 
   const signOut = useCallback(() => {
     sessionStorage.removeItem(SESSION_KEY)
-    // Clear admin application drafts
-    window.localStorage.removeItem('mucm-admin-application-form')
-    window.localStorage.removeItem('mucm-admin-current-step')
-    window.localStorage.removeItem('mucm-admin-submitted-applications')
-    window.localStorage.removeItem('mucm-admin-active-application')
+    // Legacy global keys only. Per-email drafts (mucm-admin-*::scope) stay in localStorage — same as
+    // appli-portal — so step 1+ progress reappears after the same admin logs in again.
+    window.localStorage.removeItem(ADMIN_FORM_STORAGE_KEY)
+    window.localStorage.removeItem(ADMIN_STEP_STORAGE_KEY)
+    window.localStorage.removeItem(ADMIN_SUBMISSIONS_KEY)
+    window.localStorage.removeItem(ADMIN_ACTIVE_APPLICATION_KEY)
     window.localStorage.removeItem('mucm-admin-last-user-email')
     setUser(null)
   }, [])
@@ -62,6 +86,44 @@ export function AuthProvider({ children }) {
         if (!adminData.success) {
           sessionStorage.removeItem(SESSION_KEY)
           setUser(null)
+        } else {
+          const uid = pickUserIdFromPayload(adminData)
+          const nextPermissions =
+            adminData?.data?.permissions && typeof adminData.data.permissions === 'object'
+              ? adminData.data.permissions
+              : {}
+          const nextRole = adminData?.data?.role_name || undefined
+          if (uid) {
+            setUser((prev) => {
+              if (!prev?.token) return prev
+              const next = {
+                ...prev,
+                userId: uid,
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              }
+              persistSessionPatch({
+                userId: uid,
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              })
+              return next
+            })
+          } else {
+            setUser((prev) => {
+              if (!prev?.token) return prev
+              const next = {
+                ...prev,
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              }
+              persistSessionPatch({
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              })
+              return next
+            })
+          }
         }
         return
       }
@@ -71,7 +133,46 @@ export function AuthProvider({ children }) {
         if (cancelled) return
         const adminData = await fetchAdminMe(s.token)
         if (cancelled) return
-        if (adminData.success) return
+        if (adminData.success) {
+          const uid = pickUserIdFromPayload(adminData)
+          const nextPermissions =
+            adminData?.data?.permissions && typeof adminData.data.permissions === 'object'
+              ? adminData.data.permissions
+              : {}
+          const nextRole = adminData?.data?.role_name || undefined
+          if (uid) {
+            setUser((prev) => {
+              if (!prev?.token) return prev
+              const next = {
+                ...prev,
+                userId: uid,
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              }
+              persistSessionPatch({
+                userId: uid,
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              })
+              return next
+            })
+          } else {
+            setUser((prev) => {
+              if (!prev?.token) return prev
+              const next = {
+                ...prev,
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              }
+              persistSessionPatch({
+                ...(nextRole ? { role: nextRole } : {}),
+                permissions: nextPermissions,
+              })
+              return next
+            })
+          }
+          return
+        }
         sessionStorage.removeItem(SESSION_KEY)
         setUser(null)
       }
@@ -80,6 +181,55 @@ export function AuthProvider({ children }) {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    if (!user?.token || user.authProvider !== 'admin') return
+    let cancelled = false
+
+    async function refreshAdminSession() {
+      const adminData = await fetchAdminMe(user.token)
+      if (cancelled || !adminData?.success) return
+
+      const nextRole = adminData?.data?.role_name || user.role || 'Admin'
+      const nextPermissions =
+        adminData?.data?.permissions && typeof adminData.data.permissions === 'object'
+          ? adminData.data.permissions
+          : {}
+      const uid = pickUserIdFromPayload(adminData)
+
+      setUser((prev) => {
+        if (!prev?.token) return prev
+        const next = {
+          ...prev,
+          role: nextRole,
+          permissions: nextPermissions,
+          ...(uid ? { userId: uid } : {}),
+        }
+        persistSessionPatch({
+          role: nextRole,
+          permissions: nextPermissions,
+          ...(uid ? { userId: uid } : {}),
+        })
+        return next
+      })
+    }
+
+    const intervalId = window.setInterval(refreshAdminSession, 15000)
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAdminSession()
+      }
+    }
+    window.addEventListener('focus', refreshAdminSession)
+    document.addEventListener('visibilitychange', handleVisibility)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', refreshAdminSession)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [user?.token, user?.authProvider, user?.role])
 
   const requestLoginOtp = useCallback(async (email) => {
     const normalized = email.trim().toLowerCase()
@@ -90,10 +240,7 @@ export function AuthProvider({ children }) {
         dev_otp: DEMO_OTP,
       }
     }
-    const adminData = await requestAdminOtp(normalized)
-    if (adminData.success) return adminData
-    // Login page must keep working even when admin-auth rejects non-admin emails.
-    return requestPortalOtp(normalized)
+    return requestAdminOtp(normalized)
   }, [])
 
   const verifyLoginOtpAndSignIn = useCallback(async (email, otp) => {
@@ -105,18 +252,17 @@ export function AuthProvider({ children }) {
         role: 'Admin',
         token: 'demo-admin-token',
         authProvider: 'demo',
+        userId: 'demo-admin',
       }
       sessionStorage.setItem(SESSION_KEY, JSON.stringify(next))
       setUser(next)
       return { ok: true }
     }
     const adminData = await verifyAdminOtp(normalizedEmail, trimmedOtp)
-    let data = adminData
-    let authProvider = 'admin'
+    const data = adminData
+    const authProvider = 'admin'
     if (!adminData.success) {
-      // Always fall back for login flow when admin-auth verify fails.
-      data = await verifyPortalOtp(normalizedEmail, trimmedOtp)
-      authProvider = 'portal'
+      return { ok: false, message: adminData.message || 'Invalid email or OTP' }
     }
     if (!data.success) {
       return {
@@ -129,11 +275,14 @@ export function AuthProvider({ children }) {
     if (!payload?.token || !payloadUser?.email) {
       return { ok: false, message: 'Invalid response from server' }
     }
+    const uid = pickUserIdFromPayload(payload) || pickUserIdFromPayload({ user: payloadUser })
     const next = {
       email: payloadUser.email,
       role: payloadUser.role_name || 'Admin',
+      permissions: payloadUser.permissions && typeof payloadUser.permissions === 'object' ? payloadUser.permissions : {},
       token: payload.token,
       authProvider,
+      ...(uid ? { userId: uid } : {}),
     }
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(next))
     setUser(next)
@@ -157,11 +306,14 @@ export function AuthProvider({ children }) {
     if (!payload?.token || !payloadUser?.email) {
       return { ok: false, message: 'Invalid response from server' }
     }
+    const uid = pickUserIdFromPayload(payload) || pickUserIdFromPayload({ user: payloadUser })
     const next = {
       email: payloadUser.email,
       role: payloadUser.role_name || 'Super Admin',
+      permissions: payloadUser.permissions && typeof payloadUser.permissions === 'object' ? payloadUser.permissions : {},
       token: payload.token,
       authProvider: 'superadmin',
+      ...(uid ? { userId: uid } : {}),
     }
     sessionStorage.setItem(SESSION_KEY, JSON.stringify(next))
     setUser(next)

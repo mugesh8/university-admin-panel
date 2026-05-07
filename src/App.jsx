@@ -6,6 +6,7 @@ import { useAuth } from './features/auth/useAuth.js'
 import { LoginPage } from './features/auth/LoginPage.jsx'
 import { SuperAdminSignupPage } from './features/auth/SuperAdminSignupPage.jsx'
 import { ProtectedRoute } from './features/auth/ProtectedRoute.jsx'
+import { PermissionRoute } from './features/auth/PermissionRoute.jsx'
 import { ApplicationDetailPage } from './features/applications/ApplicationDetailPage.jsx'
 import { ApplicationsLayout } from './features/applications/ApplicationsLayout.jsx'
 import { AdminCreateApplicationPage } from './features/applications/AdminCreateApplicationPage.jsx'
@@ -64,7 +65,14 @@ function AppRoutes() {
         <Route index element={<Navigate to="dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="account" element={<AccountPage />} />
-        <Route path="settings" element={<SettingsLayout />}>
+        <Route
+          path="settings"
+          element={
+            <PermissionRoute moduleId="settings" action="read">
+              <SettingsLayout />
+            </PermissionRoute>
+          }
+        >
           <Route index element={<ProgramsPage />} />
           <Route path="intakes" element={<IntakesPage />} />
           <Route path="fee-structure" element={<FeeStructurePage />} />
@@ -72,7 +80,14 @@ function AppRoutes() {
           <Route path="pipeline-stages" element={<PipelineStagesPage />} />
           <Route path="dropdown-options" element={<DropdownOptionsPage />} />
         </Route>
-        <Route path="applications" element={<ApplicationsLayout />}>
+        <Route
+          path="applications"
+          element={
+            <PermissionRoute moduleId="applications" action="read">
+              <ApplicationsLayout />
+            </PermissionRoute>
+          }
+        >
           <Route index element={<ApplicationsListPage />} />
           <Route path="new" element={<AdminCreateApplicationPage />} />
           <Route path="drafts" element={<DraftApplicationsPage />} />
@@ -83,18 +98,67 @@ function AppRoutes() {
           <Route path="documents" element={<DocumentsPage />} />
           <Route path=":id" element={<ApplicationDetailPage />} />
         </Route>
-        <Route path="communications" element={<CommunicationsLayout />}>
+        <Route
+          path="communications"
+          element={
+            <PermissionRoute moduleId="communications" action="read">
+              <CommunicationsLayout />
+            </PermissionRoute>
+          }
+        >
           <Route index element={<ComposeEmailPage />} />
           <Route path="templates" element={<EmailTemplatesPage />} />
           <Route path="bulk-messages" element={<BulkMessagesPage />} />
         </Route>
         <Route path="reports" element={<ReportsPage />} />
-        <Route path="announcements" element={<AnnouncementsPage />} />
-        <Route path="faq" element={<FaqPage />} />
-        <Route path="faq/categories" element={<FaqCategoriesPage />} />
-        <Route path="support-tickets" element={<SupportTicketsPage />} />
-        <Route path="support-tickets/categories" element={<SupportTicketCategoriesPage />} />
-        <Route path="roles-permissions" element={<RolesPermissionsPage />} />
+        <Route
+          path="announcements"
+          element={
+            <PermissionRoute moduleId="announcements" action="read">
+              <AnnouncementsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="faq"
+          element={
+            <PermissionRoute moduleId="faq" action="read">
+              <FaqPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="faq/categories"
+          element={
+            <PermissionRoute moduleId="faq" action="read">
+              <FaqCategoriesPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="support-tickets"
+          element={
+            <PermissionRoute moduleId="support_tickets" action="read">
+              <SupportTicketsPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="support-tickets/categories"
+          element={
+            <PermissionRoute moduleId="support_tickets" action="read">
+              <SupportTicketCategoriesPage />
+            </PermissionRoute>
+          }
+        />
+        <Route
+          path="roles-permissions"
+          element={
+            <PermissionRoute moduleId="roles_permissions" action="read">
+              <RolesPermissionsPage />
+            </PermissionRoute>
+          }
+        />
       </Route>
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

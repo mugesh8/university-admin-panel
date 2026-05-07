@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../env.js'
+import { actionFromMethod, assertApiPermission } from './permissionGuard.js'
 
 const SETTINGS_BASE = `${API_BASE_URL}/api/v1/settings`
 
@@ -108,6 +109,7 @@ function normalizeDropdownCategory(row) {
 }
 
 async function request(path, options = {}, token) {
+  assertApiPermission('settings', actionFromMethod(options.method || 'GET'))
   if (!API_BASE_URL) {
     throw new Error('Set VITE_API_BASE_URL to your MUCM API (e.g. http://localhost:3000).')
   }

@@ -2,11 +2,18 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { PanelLeftClose, PanelLeft } from 'lucide-react'
 import { MUCM_CREST_URL } from '../../lib/brand.js'
 import { sidebarNav } from '../../lib/nav.js'
+import { useAuth } from '../../features/auth/useAuth.js'
+import { hasModulePermission } from '../../lib/auth/adminPermissions.js'
 
 export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile }) {
   const navigate = useNavigate()
   const location = useLocation()
+  const { user } = useAuth()
   const path = location.pathname.replace(/\/$/, '') || '/'
+  const visibleNav = sidebarNav.filter((item) => {
+    if (item.type !== 'link') return true
+    return hasModulePermission(user, item.moduleId || item.to.replace(/^\//, ''), 'read')
+  })
 
   function isItemActive(itemTo) {
     if (itemTo === '/dashboard') return path === '/dashboard'
@@ -60,7 +67,7 @@ export function Sidebar({ collapsed, onToggleCollapse, mobileOpen, onCloseMobile
             }`}
             aria-label="Main"
           >
-            {sidebarNav.map((item, index) => {
+            {visibleNav.map((item, index) => {
               if (item.type === 'section') {
                 return collapsed ? null : (
                   <div key={`section-${item.label}-${index}`} className="pt-2 first:pt-0 xl:pt-3">

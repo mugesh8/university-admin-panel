@@ -1,4 +1,5 @@
 import { API_BASE_URL } from '../env.js'
+import { actionFromMethod, assertApiPermission } from './permissionGuard.js'
 
 const BREVO_BASE = `${API_BASE_URL}/api/v1/brevo`
 
@@ -10,6 +11,7 @@ function authHeaders(token) {
 }
 
 async function request(path = '', options = {}, token) {
+  assertApiPermission('communications', actionFromMethod(options.method || 'GET'))
   if (!API_BASE_URL) {
     throw new Error('Set VITE_API_BASE_URL to your MUCM API (e.g. http://localhost:5000).')
   }
