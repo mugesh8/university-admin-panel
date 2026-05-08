@@ -54,6 +54,23 @@ export function LoginPage() {
       const data = await requestLoginOtp(email.trim())
       if (!data.success) {
         const baseMessage = data.message || 'Could not send the code.'
+        const reasonCode = String(data.reason_code || '').trim().toLowerCase()
+        if (reasonCode === 'admin_not_found') {
+          setError('No admin account found for this email. Ask Super Admin to create your account.')
+          return
+        }
+        if (reasonCode === 'admin_deleted') {
+          setError('Your admin account has been removed. Ask Super Admin to recreate your account.')
+          return
+        }
+        if (reasonCode === 'admin_inactive') {
+          setError('Your admin account is inactive. Ask Super Admin to enable account access.')
+          return
+        }
+        if (reasonCode === 'role_inactive') {
+          setError('Your assigned role is inactive. Ask Super Admin to activate the role.')
+          return
+        }
         const normalized = baseMessage.trim().toLowerCase()
         if (normalized === 'this email is not authorized for admin login') {
           const diag = await diagnoseAdminLoginEmail(email.trim())
